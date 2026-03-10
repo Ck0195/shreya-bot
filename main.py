@@ -184,7 +184,7 @@ async def main():
     await client.start()
     logger.info("Shreya userbot connected 💕")
 
-    @client.on(events.NewMessage(incoming=True, from_users=YOUR_USERNAME))
+   @client.on(events.NewMessage(incoming=True))
     async def handle_message(event):
         user_text = event.raw_text
         try:
