@@ -148,22 +148,35 @@ BUSY_REPLIES = [
 
 # ─── Gemini API with conversation memory ─────────────────────────────────────
 async def call_gemini(user_message: str) -> str:
+  async def call_gemini(user_message: str) -> str:
     global conversation_history
 
     if len(conversation_history) > 30:
         conversation_history = conversation_history[-30:]
 
-    conversation_history.append({
+    # Build messages with system prompt injected at the start
+    messages = []
+    
+    # Add system prompt as first user message if history is empty
+    if not conversation_history:
+        messages.append({
+            "role": "user",
+            "parts": [{"text": f"{get_system_prompt()}\n\nUnderstood? Just reply 'yes'"}]
+        })
+        messages.append({
+            "role": "model", 
+            "parts": [{"text": "yes"}]
+        })
+
+    messages += conversation_history
+    messages.append({
         "role": "user",
         "parts": [{"text": user_message}]
     })
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     body = {
-        "system_instruction": {
-            "parts": [{"text": get_system_prompt()}]
-        },
-        "contents": conversation_history,
+        "contents": messages,
         "generationConfig": {
             "temperature": 1.0,
             "maxOutputTokens": 200,
@@ -173,12 +186,11 @@ async def call_gemini(user_message: str) -> str:
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=body) as resp:
             data = await resp.json()
+            logger.info(f"Gemini raw response: {data}")
             reply = data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
-    conversation_history.append({
-        "role": "model",
-        "parts": [{"text": reply}]
-    })
+    conversation_history.append({"role": "user", "parts": [{"text": user_message}]})
+    conversation_history.append({"role": "model", "parts": [{"text": reply}]})
 
     return reply
 
