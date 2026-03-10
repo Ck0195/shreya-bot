@@ -23,9 +23,7 @@ YOUR_USERNAME   = os.environ.get("YOUR_USERNAME")       # Your Telegram username
 SESSION_STRING  = os.environ.get("SESSION_STRING")      # Generated once via gen_session.py
 IST             = pytz.timezone("Asia/Kolkata")
 
-# ─── Gemini Setup ───────────────────────────────────────────────────────────
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+
 
 # ─── Conversation Memory ─────────────────────────────────────────────────────
 conversation_history = []
