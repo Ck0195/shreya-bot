@@ -186,21 +186,22 @@ async def main():
     @client.on(events.NewMessage(incoming=True, from_users=YOUR_USERNAME))
     async def handle_message(event):
         user_text = event.raw_text
-
-        # Human-like delay before even starting to type
-        await asyncio.sleep(random.uniform(4, 10))
-
-        async with client.action(YOUR_USERNAME, "typing"):
-            await asyncio.sleep(random.uniform(3, 9))
-
-        reply, use_voice = await generate_reply(user_text)
-
-        if use_voice:
-            async with client.action(YOUR_USERNAME, "record-audio"):
-                await asyncio.sleep(random.uniform(2, 4))
-            await send_voice_message(client, YOUR_USERNAME, reply)
-        else:
-            await client.send_message(YOUR_USERNAME, reply)
+        try:
+            await asyncio.sleep(random.uniform(4, 10))
+            async with client.action(YOUR_USERNAME, "typing"):
+                await asyncio.sleep(random.uniform(3, 9))
+            reply, use_voice = await generate_reply(user_text)
+            if use_voice:
+                async with client.action(YOUR_USERNAME, "record-audio"):
+                    await asyncio.sleep(random.uniform(2, 4))
+                await send_voice_message(client, YOUR_USERNAME, reply)
+            else:
+                await client.send_message(YOUR_USERNAME, reply)
+            logger.info(f"Replied: {reply[:50]}")
+        except Exception as e:
+            logger.error(f"REPLY ERROR: {e}")
+            await client.send_message(YOUR_USERNAME, "hey sorry give me a sec 😅")
+   
 
     # ─── Proactive random message sender ─────────────────────────────────────
     async def send_random_message():
