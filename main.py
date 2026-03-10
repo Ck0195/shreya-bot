@@ -26,7 +26,7 @@ async def ask_gemini(user_text: str) -> str:
         "Content-Type": "application/json"
     }
     body = {
-        "model": "llama3-8b-8192",
+        "model": "llama-3.1-8b-instant",
         "messages": [
             {"role": "system", "content": SHREYA_PROMPT},
             {"role": "user", "content": user_text}
