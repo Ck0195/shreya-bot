@@ -22,7 +22,7 @@ async def ask_gemini(user_text: str) -> str:
     logger.info(f"Calling Gemini with: {user_text}")
     logger.info(f"API Key starts with: {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'MISSING'}")
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     body = {
         "contents": [
             {"role": "user", "parts": [{"text": SHREYA_PROMPT + "\n\nHe texted: " + user_text + "\n\nReply as Shreya in 1-2 short sentences max."}]}
