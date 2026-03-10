@@ -3,4 +3,4 @@ google-generativeai==0.7.2
 edge-tts==6.1.9
 apscheduler==3.10.4
 pytz==2024.1
-cryptg==0.4.0
+
