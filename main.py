@@ -50,7 +50,7 @@ async def main():
     logger.info("Starting bot...")
     logger.info(f"API_ID: {API_ID}")
     logger.info(f"YOUR_USERNAME: {YOUR_USERNAME}")
-    logger.info(f"GEMINI_KEY present: {bool(GEMINI_API_KEY)}")
+    logger.info(f"Groq_KEY present: {bool(GROQ_API_KEY)}")
     logger.info(f"SESSION present: {bool(SESSION_STRING)}")
 
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
