@@ -249,5 +249,25 @@ async def main():
     await client.run_until_disconnected()
 
 
+from aiohttp import web
+
+async def handle(request):
+    return web.Response(text="Shreya is online 💕")
+
+async def run_web():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+async def start():
+    await asyncio.gather(
+        run_web(),
+        main()
+    )
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(start())
