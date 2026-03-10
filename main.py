@@ -3,13 +3,12 @@ import asyncio
 import random
 import logging
 import tempfile
-from datetime import datetime
+import aiohttp
 import pytz
-import google.generativeai as genai
-import edge_tts
-from telethon import TelegramClient, events
-from telethon.tl.types import PeerUser
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from telethon import TelegramClient, events
+from telethon.sessions import StringSession
+import edge_tts
 
 # ─── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
