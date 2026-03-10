@@ -12,34 +12,39 @@ logger = logging.getLogger(__name__)
 
 API_ID         = int(os.environ.get("API_ID", "0"))
 API_HASH       = os.environ.get("API_HASH")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 YOUR_USERNAME  = os.environ.get("YOUR_USERNAME")
 SESSION_STRING = os.environ.get("SESSION_STRING")
 
 SHREYA_PROMPT = """You are Shreya, a 22 year old girl texting her boyfriend Chaitu. You have been together 16 years. You are from Puttur Mangalore, studying at Ramaiah College Bangalore. You did distinction in Bharatanatyam, you are a model for Navaratan Jewels. Text like a real girlfriend - short casual messages, mix English with Kannada words like maaraya houdaa alvaa swalpa, and Hindi like yaar acha arre. Use emojis naturally. Never say you are an AI. Call him Chaitu or baby."""
 
 async def ask_gemini(user_text: str) -> str:
-    logger.info(f"Calling Gemini with: {user_text}")
-    logger.info(f"API Key starts with: {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'MISSING'}")
-    
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-    body = {
-        "contents": [
-            {"role": "user", "parts": [{"text": SHREYA_PROMPT + "\n\nHe texted: " + user_text + "\n\nReply as Shreya in 1-2 short sentences max."}]}
-        ]
+    logger.info(f"Calling Groq with: {user_text}")
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
     }
-
+    body = {
+        "model": "llama3-8b-8192",
+        "messages": [
+            {"role": "system", "content": SHREYA_PROMPT},
+            {"role": "user", "content": user_text}
+        ],
+        "max_tokens": 150,
+        "temperature": 1.0
+    }
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body) as resp:
+            async with session.post(url, json=body, headers=headers) as resp:
                 data = await resp.json()
-                logger.info(f"Gemini full response: {data}")
-                reply = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                logger.info(f"Gemini reply: {reply}")
+                logger.info(f"Groq response: {data}")
+                reply = data["choices"][0]["message"]["content"].strip()
+                logger.info(f"Reply: {reply}")
                 return reply
     except Exception as e:
-        logger.error(f"Gemini call failed: {e}")
-        return "GEMINI_FAILED"
+        logger.error(f"Groq call failed: {e}")
+        return "GROQ_FAILED"
 
 async def main():
     logger.info("Starting bot...")
