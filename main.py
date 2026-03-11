@@ -13,7 +13,7 @@ from telethon.sessions import StringSession
 from telethon.tl.functions.messages import SendReactionRequest
 from telethon.tl.types import ReactionEmoji
 from aiohttp import web
-import edge_tts
+from gtts import gTTS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -393,10 +393,10 @@ async def get_random_message(nudge=False):
 
 async def send_voice(client, username, text):
     try:
-        communicate = edge_tts.Communicate(text, voice="en-IN-NeerjaNeural", rate="-5%", pitch="+5Hz")
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+        tts = gTTS(text=text, lang='en', tld='co.in')
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             tmp_path = f.name
-        await communicate.save(tmp_path)
+        tts.save(tmp_path)
         await client.send_file(username, tmp_path, voice_note=True)
         os.remove(tmp_path)
         logger.info("Voice note sent ✅")
