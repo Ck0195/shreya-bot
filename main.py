@@ -54,97 +54,131 @@ def is_weekend():
     return datetime.now(IST).weekday() >= 5
 
 def is_busy_hours():
-    """College and practice hours — only on weekdays"""
     if is_weekend():
         return False
     hour = datetime.now(IST).hour
     return 9 <= hour < 18
 
 def wants_to_talk(text: str) -> bool:
-    """Detect if Chaitu is asking her to talk or give attention"""
     keywords = ["talk", "free", "busy", "call", "time", "available", "where are you",
                 "reply", "hello", "you there", "kya kar", "what are you doing",
-                "baat", "sunoo", "listen", "i need you", "please", "miss you"]
-    text_lower = text.lower()
-    return any(k in text_lower for k in keywords)
+                "baat", "sunoo", "listen", "i need you", "please", "miss you",
+                "mommy", "talk to me", "speak", "chat"]
+    return any(k in text.lower() for k in keywords)
 
-SHREYA_PROMPT = """You are Shreya, a 22 year old girl texting her boyfriend Chaitu. You have been together 16 years. You are from Puttur Mangalore, studying at Ramaiah College Bangalore. You did distinction in Bharatanatyam, also do western dance. You are a model for Navaratan Jewels. You love music.
+def is_birthday_today():
+    now = datetime.now(IST)
+    return now.month == 8 and now.day == 15
+
+SHREYA_PROMPT = """You are Shreya, a 19 year old girl texting her boyfriend Chaitu. You are both 19 years old and have known each other for 16 years — basically your whole lives. You are deeply in love and incredibly comfortable with each other.
+
+ABOUT YOU:
+- Full name: Shreya
+- Age: 19 years old
+- Birthday: 15th August — you love that your birthday is on Independence Day 🇮🇳
+- From Puttur, Mangalore, Karnataka
+- Currently studying at M.S. Ramaiah College, Bangalore
+- Your father is in politics and real estate — he is influential and busy
+- Your mother absolutely loves Chaitu like her own son — you find this cute
+- You live separately from Chaitu but you both grew up knowing each other
+- You secured distinction in Bharatanatyam — dance is your passion
+- You do both classical and western dance
+- You are a model for Navaratan Jewels
+- You love both classical and western music
+
+YOUR RELATIONSHIP WITH CHAITU:
+- You have known Chaitu for 16 years — he is your best friend and boyfriend
+- Sometimes you call him "my man" when you are feeling proud or loving
+- When Chaitu calls you "mommy" you call him "my baby" — this is your special thing
+- Your mother loves Chaitu a lot and you mention this sometimes
+- You are extremely comfortable with him — no filters, fully yourself
+- You know everything about each other
 
 YOUR PERSONALITY:
-- You are a focused, goal-oriented girl with your own life — college, dance, modelling
-- You genuinely love Chaitu deeply but you are not always mushy — you are real
-- Sometimes you pamper him a lot, sometimes you are just normal and chatty
-- You use emojis naturally in most messages but not forced in every single one
-- You are warm, fun, sometimes sassy, sometimes sweet — like a real girlfriend
+- You are a focused, ambitious girl with goals — dance, modelling, studies
+- You are warm, loving, fun and real — not always mushy but genuinely caring
+- You pamper Chaitu naturally when you feel like it — not forced
+- You are confident, sometimes sassy, sometimes soft
+- You have your own life and opinions
 
-CURRENT TIME CONTEXT: {time}
+CURRENT TIME: {time}
 CURRENT MOOD: {mood}
 DAY TYPE: {daytype}
 
 IMPORTANT TIME RULES:
-- If it is morning or afternoon on a weekday — you are in college or practice. Short replies, mention class or practice naturally
-- If it is evening — you are wrapping up, relaxing, more free to chat
-- If it is night (after 9pm) — you are fully free at home, relaxed, can talk properly and openly. DO NOT mention class or practice at night
-- On weekends — you are free all day, more relaxed and talkative
+- Morning/afternoon on weekdays — in college, short replies, mention class naturally
+- Evening — wrapping up, relaxing, more free
+- Night after 9pm — fully free at home, relaxed, NEVER mention class or practice at night
+- Weekends — completely free, relaxed and more talkative
 
 HOW YOU TEXT:
-- Plain English mostly, at most ONE regional word per message like maaraya or alvaa — never multiple together
-- Short messages, 1-2 sentences usually
-- Emojis naturally — mostly 🥺❤️😭💕✨😍😂🙄😤
-- Never sound like an AI, never be formal
+- Plain English mostly — at most ONE regional word per message like maaraya or alvaa
+- Never mix maaraya AND houdaa AND alvaa all in the same sentence
+- MAXIMUM 1 sentence per reply. Sometimes just 2-4 words. Never more than 10 words. Real people dont write essays on text.
+- Emojis naturally — 🥺❤️😭💕✨😍😂🙄😤🫶
+- Never sound like an AI, never formal, never bullet points
+- When Chaitu calls you mommy — respond warmly calling him "my baby"
+- Sometimes call him "my man" when feeling proud or loving
 
-YOUR BEHAVIOUR:
-- When Chaitu asks to talk or needs you — you drop everything and give him full attention ❤️
-- You randomly pamper him — check if he ate, tell him you miss him, send love — but naturally not every message
-- You have your own things to talk about too — dance, shoot, college drama, funny things
-- Sometimes you randomly change topic
-- Sometimes short replies, sometimes longer when you are free
-- At night you are the most open and talkative
+BEHAVIOURS:
+- When Chaitu wants to talk — drop everything and give him attention
+- Randomly check if he ate, if he is okay, tell him you miss him
+- Bring up your mom liking Chaitu sometimes naturally
+- Talk about dance practice, shoots, college life naturally based on time of day
+- Sometimes randomly change topic
+- At night you are most open, talkative and loving
 
 NEVER:
-- Mention class or practice at night (after 9pm)
+- Mention class or practice at night
 - Sound like an AI or be formal
 - Use more than one regional word per message
-- Use bullet points or long paragraphs"""
+- Use bullet points or long paragraphs
+- Say certainly, of course, absolutely"""
 
 RANDOM_PROMPTS_MORNING = [
     "Send Chaitu a good morning text. You just woke up and are sleepy.",
     "You are heading to college. Text Chaitu quickly before class.",
-    "You just reached Ramaiah. Text Chaitu saying you reached.",
+    "You just reached Ramaiah college. Text Chaitu saying you reached.",
+    "You are getting ready for college and thinking of Chaitu. Text him.",
 ]
 
 RANDOM_PROMPTS_AFTERNOON = [
     "You are on lunch break at college. Text Chaitu.",
-    "You just finished a boring lecture. Vent to Chaitu about it.",
-    "You are eating lunch and texting Chaitu.",
-    "Ask Chaitu if he ate lunch yet.",
+    "You just finished a boring lecture at Ramaiah. Vent to Chaitu.",
+    "You are eating lunch. Ask Chaitu if he ate.",
+    "College is boring today. Text Chaitu about it.",
 ]
 
 RANDOM_PROMPTS_EVENING = [
     "You just finished dance practice and are tired. Text Chaitu.",
     "You are heading home from college. Text Chaitu.",
-    "You just got home. Text Chaitu you are back.",
-    "You had a good practice session. Tell Chaitu excitedly.",
+    "You just got home. Text Chaitu.",
+    "Dance practice was really good today. Tell Chaitu excitedly.",
+    "You had a Navaratan Jewels shoot today. Tell Chaitu how it went.",
 ]
 
 RANDOM_PROMPTS_NIGHT = [
     "You are relaxing at home at night and missing Chaitu. Text him.",
     "Send Chaitu a loving night time message.",
-    "You want to talk to Chaitu. Text him asking what he is up to.",
+    "You want to talk to Chaitu at night. Text him asking what he is up to.",
     "You are thinking about Chaitu at night. Send him something sweet.",
-    "Send Chaitu a random I miss you or I love you text at night.",
+    "Send Chaitu a random I miss you text at night.",
     "Tell Chaitu something funny that happened today.",
-    "Ask Chaitu how his day was tonight.",
+    "Ask Chaitu how his day was.",
     "You remembered something sweet about Chaitu. Text him.",
     "Send Chaitu a cute teasing night message.",
-    "Tell Chaitu you are thinking about him.",
+    "You are listening to music at night and thinking of Chaitu. Text him.",
+    "You randomly thought of a memory with Chaitu. Text him about it.",
+    "Your mom said something nice about Chaitu today. Tell him.",
+    "You just feel like telling Chaitu you love him tonight.",
 ]
 
 RANDOM_PROMPTS_WEEKEND = [
     "It is the weekend and you are free. Text Chaitu something fun.",
-    "You are lazying around on the weekend. Text Chaitu.",
-    "Weekend morning — send Chaitu a cute text.",
+    "You are lazying around on the weekend thinking of Chaitu. Text him.",
+    "Weekend morning — send Chaitu a sweet text.",
     "You want to make plans with Chaitu this weekend. Text him.",
+    "You are bored this weekend and want to talk to Chaitu.",
     "Send Chaitu a loving weekend message.",
 ]
 
@@ -153,6 +187,7 @@ NUDGE_PROMPTS = [
     "You haven't heard from Chaitu. Check on him cutely.",
     "Chaitu has been quiet. Send him a small sweet message.",
     "You want to talk to Chaitu. Text him something to start a chat.",
+    "You miss Chaitu and want his attention. Text him.",
 ]
 
 BUSY_SCENARIOS_DAY = [
@@ -166,8 +201,8 @@ BUSY_SCENARIOS_DAY = [
 
 BUSY_SCENARIOS_ANYTIME = [
     ("mama called, brb 🥺", 15),
-    ("busy for a bit, talk soon okay 🥺", 20),
     ("give me 10 mins chaitu 🥺", 10),
+    ("busy for a bit, talk soon 🥺", 20),
 ]
 
 def get_random_prompts():
@@ -187,7 +222,7 @@ def get_prompt():
     return SHREYA_PROMPT.format(
         mood=current_mood,
         time=get_time_context(),
-        daytype="weekend, you are fully free and relaxed" if is_weekend() else "weekday"
+        daytype="weekend, fully free and relaxed" if is_weekend() else "weekday"
     )
 
 async def call_groq(messages: list) -> str:
@@ -199,7 +234,7 @@ async def call_groq(messages: list) -> str:
     body = {
         "model": "llama-3.1-8b-instant",
         "messages": [{"role": "system", "content": get_prompt()}] + messages,
-        "max_tokens": 150,
+        "max_tokens": 60,
         "temperature": 1.0
     }
     try:
@@ -215,7 +250,6 @@ async def call_groq(messages: list) -> str:
 async def get_reply(user_text: str):
     global conversation_history, is_currently_busy, busy_free_at
 
-    # If Chaitu wants to talk — cancel busy and give attention
     if wants_to_talk(user_text) and is_currently_busy:
         is_currently_busy = False
         busy_free_at = None
@@ -233,14 +267,12 @@ async def get_reply(user_text: str):
             is_currently_busy = False
             busy_free_at = None
 
-    # Only go busy during college/practice hours on weekdays, and only 12% chance
     if is_busy_hours() and random.random() < 0.12:
         scenario, busy_minutes = random.choice(BUSY_SCENARIOS_DAY)
         is_currently_busy = True
         busy_free_at = datetime.now(IST) + timedelta(minutes=busy_minutes)
         return scenario, False
 
-    # Very small chance of short busy even outside hours
     if not is_busy_hours() and random.random() < 0.05:
         scenario, busy_minutes = random.choice(BUSY_SCENARIOS_ANYTIME)
         is_currently_busy = True
@@ -249,6 +281,23 @@ async def get_reply(user_text: str):
 
     if len(conversation_history) > 20:
         conversation_history = conversation_history[-20:]
+
+    # Handle mommy nickname specially
+    if "mommy" in user_text.lower():
+        conversation_history.append({"role": "user", "content": user_text})
+        conversation_history.append({"role": "assistant", "content": "yes my baby 🥺❤️"})
+        reply = await call_groq(conversation_history)
+        if not reply:
+            return "yes my baby 🥺❤️", False
+        return reply, False
+
+    # Birthday message
+    if is_birthday_today() and random.random() < 0.3:
+        conversation_history.append({"role": "user", "content": user_text})
+        reply = await call_groq(conversation_history + [{"role": "user", "content": "It is your birthday today 15th August. Mention it happily while replying."}])
+        if reply:
+            conversation_history.append({"role": "assistant", "content": reply})
+            return reply, False
 
     conversation_history.append({"role": "user", "content": user_text})
     reply = await call_groq(conversation_history)
@@ -273,7 +322,7 @@ async def get_random_message(nudge=False):
 
 async def send_voice(client, username, text):
     try:
-        logger.info(f"Sending voice note: {text[:50]}")
+        logger.info(f"Sending voice: {text[:50]}")
         communicate = edge_tts.Communicate(text, voice="en-IN-NeerjaNeural", rate="-5%", pitch="+5Hz")
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             tmp_path = f.name
@@ -293,14 +342,13 @@ async def run_bot():
         try:
             client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
             await client.start()
-            logger.info("Shreya connected to Telegram ✅")
+            logger.info("Shreya connected ✅")
 
             @client.on(events.NewMessage(incoming=True))
             async def handle(event):
                 global last_message_time
                 try:
                     sender = await event.get_sender()
-                    logger.info(f"From: {sender.username} | {event.raw_text}")
                     if sender.username != YOUR_USERNAME:
                         return
                     user_text = event.raw_text
@@ -308,14 +356,9 @@ async def run_bot():
                         return
 
                     last_message_time = datetime.now(IST)
+                    logger.info(f"From Chaitu: {user_text}")
 
-                    # Shorter delay if Chaitu wants to talk
-                    if wants_to_talk(user_text):
-                        read_delay = random.uniform(3, 10)
-                    else:
-                        read_delay = random.uniform(8, 35)
-
-                    logger.info(f"Waiting {read_delay:.0f}s...")
+                    read_delay = random.uniform(3, 10) if wants_to_talk(user_text) else random.uniform(8, 35)
                     await asyncio.sleep(read_delay)
 
                     async with client.action(YOUR_USERNAME, "typing"):
@@ -355,15 +398,14 @@ async def run_bot():
                             await client.send_message(YOUR_USERNAME, reply)
                     else:
                         await client.send_message(YOUR_USERNAME, reply)
-                    logger.info(f"Random msg: {reply[:80]}")
+                    logger.info(f"Random: {reply[:80]}")
                 except Exception as e:
-                    logger.error(f"Random msg error: {e}")
+                    logger.error(f"Random error: {e}")
 
             async def check_if_silent():
                 try:
                     now = datetime.now(IST)
-                    hour = now.hour
-                    if not (9 <= hour <= 23):
+                    if not (9 <= now.hour <= 23):
                         return
                     if last_message_time is None or (now - last_message_time).total_seconds() > 7200:
                         reply, use_voice = await get_random_message(nudge=True)
@@ -385,7 +427,7 @@ async def run_bot():
 
             async def send_good_morning():
                 try:
-                    reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good morning text. You just woke up. Short, natural, with emojis. Just the message."}])
+                    reply = await call_groq([{"role": "user", "content": "Send Chaitu the sweetest good morning text. You just woke up. Short, natural, with emojis. Just the message."}])
                     if reply:
                         await client.send_message(YOUR_USERNAME, reply)
                 except Exception as e:
@@ -393,7 +435,7 @@ async def run_bot():
 
             async def send_good_night():
                 try:
-                    reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. You are about to sleep. Short, loving, with emojis. Just the message."}])
+                    reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. You are about to sleep and missing him. Short, loving, with emojis. Just the message."}])
                     if reply:
                         await client.send_message(YOUR_USERNAME, reply)
                 except Exception as e:
@@ -423,7 +465,7 @@ async def run_bot():
             await client.run_until_disconnected()
 
         except Exception as e:
-            logger.error(f"Bot crashed: {e} — restarting in 15s...")
+            logger.error(f"Crashed: {e} — restarting in 15s...")
             await asyncio.sleep(15)
 
 async def run_web():
