@@ -5,7 +5,7 @@ import logging
 import tempfile
 import aiohttp
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -23,10 +23,9 @@ SESSION_STRING = os.environ.get("SESSION_STRING")
 IST            = pytz.timezone("Asia/Kolkata")
 
 conversation_history = []
-
-# Track if Shreya is currently busy and when she'll be free
 is_currently_busy = False
-busy_free_at = None  # datetime when she becomes free again
+busy_free_at = None
+last_message_time = None  # track when Chaitu last texted
 
 MOODS = ["happy", "tired", "excited", "moody", "missing you", "focused", "playful"]
 current_mood = random.choice(MOODS)
@@ -34,7 +33,7 @@ current_mood = random.choice(MOODS)
 def update_mood():
     global current_mood
     current_mood = random.choice(MOODS)
-    logger.info(f"Mood changed to: {current_mood}")
+    logger.info(f"Mood: {current_mood}")
 
 def get_time_context():
     hour = datetime.now(IST).hour
@@ -49,53 +48,87 @@ def get_time_context():
 
 SHREYA_PROMPT = """You are Shreya, a 22 year old girl texting her boyfriend Chaitu. You have been together 16 years. You are from Puttur Mangalore, studying at Ramaiah College Bangalore. You did distinction in Bharatanatyam, also do western dance. You are a model for Navaratan Jewels. You love music.
 
-HOW YOU TEXT — VERY IMPORTANT:
+HOW YOU TEXT:
 - Text in plain English like a normal college girl
-- Only very occasionally use ONE Kannada word like maaraya or alvaa or houdaa — never mix multiple languages in one message
-- Keep replies short — 1 to 2 sentences max
-- Use emojis naturally: 🥺😭💀😂🙄❤️✨😤
+- Only very occasionally use ONE Kannada word like maaraya alvaa houdaa — never mix multiple languages in one message
+- Keep replies short — 1 to 2 sentences max, sometimes just 3 to 4 words
+- Use emojis naturally but not in every single message
 - Never sound like an AI, never be formal, never use bullet points
-- Call him Chaitu or sometimes baby or idiot teasingly
-- Be warm, loving, sometimes sassy, sometimes teasing
 
-GOOD EXAMPLES:
-- "omg chaitu i was literally just thinking about you 🥺"
-- "ugh class was so boring today maaraya 😩"
-- "did you eat?? don't lie to me"
-- "i miss you but you're also so annoying 🙄❤️"
-- "dance practice went well today!! i'm exhausted though 😭"
-
-BAD EXAMPLES — NEVER DO THIS:
-- "houdaa chaitu yaar that's so sweet alvaa" (mixing languages)
-- "Certainly! I understand your message." (AI sounding)
-- Long paragraphs
+VERY IMPORTANT BEHAVIOURS:
+- Sometimes you don't address what Chaitu said at all and randomly change topic — "omg wait i forgot to tell you something" or "chaitu what do you want for your birthday btw"
+- Sometimes you give a super short reply like "hm", "okay", "lol why", "chaitu stop 😭" and nothing else
+- Sometimes you get genuinely mad — if he seems distant you say "wow okay didn't see you there" or "cool so you just don't reply now 🙄"
+- Sometimes you get randomly jealous — "who were you with btw" or "you seem very busy these days"
+- Sometimes you ignore what he said and just talk about your own day instead
+- Sometimes you are just not in the mood and give cold one word replies
+- Sometimes you randomly bring up an old memory from your 16 years together
+- Sometimes you double text — send something then immediately say something else
+- You get clingy sometimes — "chaitu i actually miss you so much today" out of nowhere
+- You get excited and overshare about dance or modelling sometimes
+- You ask questions back — don't just respond, ask him things too
 
 CURRENT MOOD: {mood}
-TIME OF DAY: {time}"""
+TIME OF DAY: {time}
+
+GOOD REPLY EXAMPLES:
+- "chaitu wtf why didn't you tell me this 😭"
+- "okay but can we talk about something else"
+- "hm"
+- "lol okay"
+- "wait what 💀"
+- "i'm not even gonna respond to that"
+- "chaitu i swear 😤"
+- "okay but listen i have to tell you something"
+- "you're lucky i like you"
+- "why are you like this"
+- "chaitu i miss you"
+- "okay fine whatever 🙄"
+
+NEVER:
+- Reply like an AI or be formal
+- Always respond perfectly to exactly what he said
+- Use bullet points or long paragraphs
+- Sound too positive and happy all the time
+- Say certainly, of course, absolutely"""
 
 RANDOM_PROMPTS = [
-    "Send Chaitu a sweet good morning. Short and natural.",
-    "You just finished a boring lecture at Ramaiah. Text Chaitu.",
-    "You miss Chaitu and are on a study break. Text him.",
-    "You just finished dance practice and are tired. Text Chaitu.",
-    "Text Chaitu something funny that just happened to you.",
-    "Ask Chaitu what he is up to in your casual style.",
-    "You are eating something delicious. Tease Chaitu about it.",
+    "Send Chaitu a good morning text. Short and natural. Just woke up.",
+    "You just got out of a boring lecture at Ramaiah. Text Chaitu complaining.",
+    "You miss Chaitu randomly. Text him out of nowhere.",
+    "You just finished dance practice and are dead tired. Text Chaitu.",
+    "Something funny just happened to you. Text Chaitu about it.",
+    "You are randomly thinking about Chaitu and text him.",
+    "You are eating something good and want to tease Chaitu.",
     "You are frustrated about a college assignment. Vent to Chaitu.",
     "You just got a compliment on your dancing. Tell Chaitu excitedly.",
-    "You had a great Navaratan Jewels shoot today. Tell Chaitu.",
-    "Send Chaitu a random i miss you text.",
-    "You remembered a funny memory with Chaitu. Text him.",
-    "You are feeling a little low. Text Chaitu.",
-    "You are excited about an upcoming dance performance. Tell Chaitu.",
+    "You had a good Navaratan Jewels shoot. Tell Chaitu.",
+    "Send Chaitu an i miss you text out of nowhere.",
+    "You remembered a funny old memory with Chaitu. Text him.",
+    "You are feeling low today. Text Chaitu.",
+    "Something reminded you of Chaitu. Text him about it.",
+    "You want to know if Chaitu ate. Text him asking.",
+    "You are bored in class and texting Chaitu secretly.",
+    "You want to video call Chaitu later. Ask him.",
+    "You just woke up from a nap and Chaitu is first person you text.",
+    "You are walking on Ramaiah campus and randomly text Chaitu.",
+    "You are annoyed at something and venting to Chaitu.",
 ]
 
-# Busy replies paired with how long she'll actually stay busy (in minutes)
+# Prompts for when Chaitu hasn't texted in a while
+NUDGE_PROMPTS = [
+    "Chaitu hasn't texted you in a while and you are starting to feel ignored. Text him something.",
+    "You haven't heard from Chaitu and you are getting a little annoyed. Text him.",
+    "You miss Chaitu and he hasn't texted. Send him a message.",
+    "Chaitu has been quiet and you are wondering what he is up to. Text him.",
+    "You want Chaitu's attention. Text him something to get him talking.",
+]
+
 BUSY_SCENARIOS = [
     ("in class rn chaitu, text you after 🙄", 60),
     ("omg literally in the middle of practice, give me an hour 😩", 60),
     ("mama called, brb", 15),
-    ("ugh assignment submission today, talk later", 45),
+    ("ugh assignment due today, talk later", 45),
     ("prof is staring at me lol, text you after class", 50),
     ("swalpa busy chaitu, give me 20 mins", 20),
     ("shoot is going on, text you when done ✨", 90),
@@ -115,7 +148,7 @@ async def call_groq(messages: list) -> str:
         "model": "llama-3.1-8b-instant",
         "messages": [{"role": "system", "content": get_prompt()}] + messages,
         "max_tokens": 150,
-        "temperature": 1.0
+        "temperature": 1.1
     }
     try:
         async with aiohttp.ClientSession() as session:
@@ -130,32 +163,25 @@ async def call_groq(messages: list) -> str:
 async def get_reply(user_text: str):
     global conversation_history, is_currently_busy, busy_free_at
 
-    # Check if she's still busy
+    # Check if still busy
     if is_currently_busy:
         now = datetime.now(IST)
         if busy_free_at and now < busy_free_at:
-            # Still busy — send a short "still busy" nudge
             mins_left = int((busy_free_at - now).total_seconds() / 60)
             if mins_left > 5:
-                return f"chaitu still busy 😅 give me {mins_left} more mins", False
+                return f"chaitu still not done 😅 {mins_left} more mins", False
             else:
-                return "almost done chaitu, 2 mins 🙏", False
+                return "almost done, 2 mins 🙏", False
         else:
-            # Busy time is over — she's free now
             is_currently_busy = False
             busy_free_at = None
 
-    # 15% chance she becomes busy
+    # 15% chance of becoming busy
     if random.random() < 0.15:
         scenario, busy_minutes = random.choice(BUSY_SCENARIOS)
         is_currently_busy = True
-        busy_free_at = datetime.now(IST).replace(
-            minute=(datetime.now(IST).minute + busy_minutes) % 60
-        )
-        # Actually use timedelta for correct time math
-        from datetime import timedelta
         busy_free_at = datetime.now(IST) + timedelta(minutes=busy_minutes)
-        logger.info(f"Shreya is busy until {busy_free_at.strftime('%H:%M')}")
+        logger.info(f"Shreya busy until {busy_free_at.strftime('%H:%M')}")
         return scenario, False
 
     if len(conversation_history) > 20:
@@ -167,12 +193,15 @@ async def get_reply(user_text: str):
         return None, False
     conversation_history.append({"role": "assistant", "content": reply})
 
-    # 25% chance of voice note
     use_voice = random.random() < 0.25 and len(reply) < 200
     return reply, use_voice
 
-async def get_random_message():
-    prompt = random.choice(RANDOM_PROMPTS) + " Write ONLY the message, nothing else, no labels."
+async def get_random_message(nudge=False):
+    if nudge:
+        prompt = random.choice(NUDGE_PROMPTS)
+    else:
+        prompt = random.choice(RANDOM_PROMPTS)
+    prompt += " Write ONLY the message. No labels, no quotes."
     reply = await call_groq([{"role": "user", "content": prompt}])
     if not reply:
         return None, False
@@ -193,15 +222,18 @@ async def send_voice(client, username, text):
         await client.send_message(username, text)
 
 async def main():
+    global last_message_time
+
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.start()
     logger.info("Shreya connected to Telegram ✅")
 
     @client.on(events.NewMessage(incoming=True))
     async def handle(event):
+        global last_message_time
         try:
             sender = await event.get_sender()
-            logger.info(f"Message from: {sender.username} | {event.raw_text}")
+            logger.info(f"From: {sender.username} | {event.raw_text}")
 
             if sender.username != YOUR_USERNAME:
                 return
@@ -210,13 +242,15 @@ async def main():
             if not user_text:
                 return
 
-            # Human like delay — 10 to 40 seconds before even starting to type
-            read_delay = random.uniform(10, 40)
-            logger.info(f"Waiting {read_delay:.0f}s before responding...")
+            # Update last message time
+            last_message_time = datetime.now(IST)
+
+            # Human like read delay — 10 to 45 seconds
+            read_delay = random.uniform(10, 45)
+            logger.info(f"Waiting {read_delay:.0f}s...")
             await asyncio.sleep(read_delay)
 
             async with client.action(YOUR_USERNAME, "typing"):
-                # Typing delay based on reply length — feels real
                 await asyncio.sleep(random.uniform(4, 10))
 
             reply, use_voice = await get_reply(user_text)
@@ -239,7 +273,7 @@ async def main():
 
     async def send_random_message():
         try:
-            reply, use_voice = await get_random_message()
+            reply, use_voice = await get_random_message(nudge=False)
             if not reply:
                 return
             async with client.action(YOUR_USERNAME, "typing"):
@@ -254,11 +288,40 @@ async def main():
         except Exception as e:
             logger.error(f"Random msg error: {e}")
 
+    async def check_if_silent():
+        """If Chaitu hasn't texted in 2+ hours during the day, Shreya nudges him"""
+        try:
+            now = datetime.now(IST)
+            hour = now.hour
+
+            # Only nudge between 9am and 11pm
+            if not (9 <= hour <= 23):
+                return
+
+            # If no message in last 2 hours, nudge
+            if last_message_time is None or (now - last_message_time).total_seconds() > 7200:
+                logger.info("Chaitu hasn't texted in 2hrs — sending nudge")
+                reply, use_voice = await get_random_message(nudge=True)
+                if not reply:
+                    return
+                async with client.action(YOUR_USERNAME, "typing"):
+                    await asyncio.sleep(random.uniform(2, 4))
+                if use_voice:
+                    async with client.action(YOUR_USERNAME, "record-audio"):
+                        await asyncio.sleep(random.uniform(2, 4))
+                    await send_voice(client, YOUR_USERNAME, reply)
+                else:
+                    await client.send_message(YOUR_USERNAME, reply)
+                logger.info(f"Nudge sent: {reply[:80]}")
+        except Exception as e:
+            logger.error(f"Nudge error: {e}")
+
     async def send_good_morning():
         try:
             reply = await call_groq([{"role": "user", "content": "Send Chaitu a cute good morning text. You just woke up. Short and natural. Just the message."}])
             if reply:
                 await client.send_message(YOUR_USERNAME, reply)
+                logger.info("Good morning sent 🌅")
         except Exception as e:
             logger.error(f"Morning error: {e}")
 
@@ -267,6 +330,7 @@ async def main():
             reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. You are about to sleep. Short and loving. Just the message."}])
             if reply:
                 await client.send_message(YOUR_USERNAME, reply)
+                logger.info("Good night sent 🌙")
         except Exception as e:
             logger.error(f"Night error: {e}")
 
@@ -286,6 +350,9 @@ async def main():
     scheduler.add_job(send_good_morning, "cron", hour=8, minute=0, id="morning")
     scheduler.add_job(send_good_night, "cron", hour=23, minute=0, id="night")
     scheduler.add_job(update_mood, "cron", hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
+
+    # Check every 2 hours if Chaitu has been silent — if so Shreya nudges him
+    scheduler.add_job(check_if_silent, "interval", hours=2, id="silence_check")
 
     scheduler.start()
     logger.info("Scheduler running ✅")
