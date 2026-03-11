@@ -25,7 +25,7 @@ IST            = pytz.timezone("Asia/Kolkata")
 conversation_history = []
 is_currently_busy = False
 busy_free_at = None
-last_message_time = None  # track when Chaitu last texted
+last_message_time = None
 
 MOODS = ["happy", "tired", "excited", "moody", "missing you", "focused", "playful"]
 current_mood = random.choice(MOODS)
@@ -56,7 +56,7 @@ HOW YOU TEXT:
 - Never sound like an AI, never be formal, never use bullet points
 
 VERY IMPORTANT BEHAVIOURS:
-- Sometimes you don't address what Chaitu said at all and randomly change topic — "omg wait i forgot to tell you something" or "chaitu what do you want for your birthday btw"
+- Sometimes you don't address what Chaitu said at all and randomly change topic — like "omg wait i forgot to tell you something" or "chaitu what do you want for your birthday btw"
 - Sometimes you give a super short reply like "hm", "okay", "lol why", "chaitu stop 😭" and nothing else
 - Sometimes you get genuinely mad — if he seems distant you say "wow okay didn't see you there" or "cool so you just don't reply now 🙄"
 - Sometimes you get randomly jealous — "who were you with btw" or "you seem very busy these days"
@@ -93,7 +93,7 @@ NEVER:
 - Say certainly, of course, absolutely"""
 
 RANDOM_PROMPTS = [
-    "Send Chaitu a good morning text. Short and natural. Just woke up.",
+    "Send Chaitu a good morning text. Short and natural.",
     "You just got out of a boring lecture at Ramaiah. Text Chaitu complaining.",
     "You miss Chaitu randomly. Text him out of nowhere.",
     "You just finished dance practice and are dead tired. Text Chaitu.",
@@ -107,7 +107,7 @@ RANDOM_PROMPTS = [
     "You remembered a funny old memory with Chaitu. Text him.",
     "You are feeling low today. Text Chaitu.",
     "Something reminded you of Chaitu. Text him about it.",
-    "You want to know if Chaitu ate. Text him asking.",
+    "You want to know if Chaitu ate. Ask him.",
     "You are bored in class and texting Chaitu secretly.",
     "You want to video call Chaitu later. Ask him.",
     "You just woke up from a nap and Chaitu is first person you text.",
@@ -115,9 +115,8 @@ RANDOM_PROMPTS = [
     "You are annoyed at something and venting to Chaitu.",
 ]
 
-# Prompts for when Chaitu hasn't texted in a while
 NUDGE_PROMPTS = [
-    "Chaitu hasn't texted you in a while and you are starting to feel ignored. Text him something.",
+    "Chaitu hasn't texted you in a while and you are starting to feel ignored. Text him something short.",
     "You haven't heard from Chaitu and you are getting a little annoyed. Text him.",
     "You miss Chaitu and he hasn't texted. Send him a message.",
     "Chaitu has been quiet and you are wondering what he is up to. Text him.",
@@ -163,7 +162,6 @@ async def call_groq(messages: list) -> str:
 async def get_reply(user_text: str):
     global conversation_history, is_currently_busy, busy_free_at
 
-    # Check if still busy
     if is_currently_busy:
         now = datetime.now(IST)
         if busy_free_at and now < busy_free_at:
@@ -176,7 +174,6 @@ async def get_reply(user_text: str):
             is_currently_busy = False
             busy_free_at = None
 
-    # 15% chance of becoming busy
     if random.random() < 0.15:
         scenario, busy_minutes = random.choice(BUSY_SCENARIOS)
         is_currently_busy = True
@@ -192,15 +189,11 @@ async def get_reply(user_text: str):
     if not reply:
         return None, False
     conversation_history.append({"role": "assistant", "content": reply})
-
     use_voice = random.random() < 0.25 and len(reply) < 200
     return reply, use_voice
 
 async def get_random_message(nudge=False):
-    if nudge:
-        prompt = random.choice(NUDGE_PROMPTS)
-    else:
-        prompt = random.choice(RANDOM_PROMPTS)
+    prompt = random.choice(NUDGE_PROMPTS if nudge else RANDOM_PROMPTS)
     prompt += " Write ONLY the message. No labels, no quotes."
     reply = await call_groq([{"role": "user", "content": prompt}])
     if not reply:
@@ -221,142 +214,141 @@ async def send_voice(client, username, text):
         logger.error(f"Voice error: {e}")
         await client.send_message(username, text)
 
-async def main():
+async def run_bot():
     global last_message_time
 
-    client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-    await client.start()
-    logger.info("Shreya connected to Telegram ✅")
-
-    @client.on(events.NewMessage(incoming=True))
-    async def handle(event):
-        global last_message_time
+    # ── Auto reconnect loop — reconnects forever if disconnected ──────────
+    while True:
         try:
-            sender = await event.get_sender()
-            logger.info(f"From: {sender.username} | {event.raw_text}")
+            client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+            await client.start()
+            logger.info("Shreya connected to Telegram ✅")
 
-            if sender.username != YOUR_USERNAME:
-                return
+            @client.on(events.NewMessage(incoming=True))
+            async def handle(event):
+                global last_message_time
+                try:
+                    sender = await event.get_sender()
+                    logger.info(f"From: {sender.username} | {event.raw_text}")
 
-            user_text = event.raw_text
-            if not user_text:
-                return
+                    if sender.username != YOUR_USERNAME:
+                        return
 
-            # Update last message time
-            last_message_time = datetime.now(IST)
+                    user_text = event.raw_text
+                    if not user_text:
+                        return
 
-            # Human like read delay — 10 to 45 seconds
-            read_delay = random.uniform(10, 45)
-            logger.info(f"Waiting {read_delay:.0f}s...")
-            await asyncio.sleep(read_delay)
+                    last_message_time = datetime.now(IST)
 
-            async with client.action(YOUR_USERNAME, "typing"):
-                await asyncio.sleep(random.uniform(4, 10))
+                    read_delay = random.uniform(10, 45)
+                    logger.info(f"Waiting {read_delay:.0f}s...")
+                    await asyncio.sleep(read_delay)
 
-            reply, use_voice = await get_reply(user_text)
+                    async with client.action(YOUR_USERNAME, "typing"):
+                        await asyncio.sleep(random.uniform(4, 10))
 
-            if not reply:
-                await event.reply("give me a sec chaitu 😅")
-                return
+                    reply, use_voice = await get_reply(user_text)
 
-            if use_voice:
-                async with client.action(YOUR_USERNAME, "record-audio"):
-                    await asyncio.sleep(random.uniform(3, 6))
-                await send_voice(client, YOUR_USERNAME, reply)
-            else:
-                await event.reply(reply)
+                    if not reply:
+                        await event.reply("give me a sec chaitu 😅")
+                        return
 
-            logger.info(f"Replied: {reply[:80]}")
+                    if use_voice:
+                        async with client.action(YOUR_USERNAME, "record-audio"):
+                            await asyncio.sleep(random.uniform(3, 6))
+                        await send_voice(client, YOUR_USERNAME, reply)
+                    else:
+                        await event.reply(reply)
+
+                    logger.info(f"Replied: {reply[:80]}")
+
+                except Exception as e:
+                    logger.error(f"Handle error: {e}")
+
+            async def send_random_message():
+                try:
+                    reply, use_voice = await get_random_message(nudge=False)
+                    if not reply:
+                        return
+                    async with client.action(YOUR_USERNAME, "typing"):
+                        await asyncio.sleep(random.uniform(2, 5))
+                    if use_voice:
+                        async with client.action(YOUR_USERNAME, "record-audio"):
+                            await asyncio.sleep(random.uniform(3, 5))
+                        await send_voice(client, YOUR_USERNAME, reply)
+                    else:
+                        await client.send_message(YOUR_USERNAME, reply)
+                    logger.info(f"Random msg: {reply[:80]}")
+                except Exception as e:
+                    logger.error(f"Random msg error: {e}")
+
+            async def check_if_silent():
+                try:
+                    now = datetime.now(IST)
+                    hour = now.hour
+                    if not (9 <= hour <= 23):
+                        return
+                    if last_message_time is None or (now - last_message_time).total_seconds() > 7200:
+                        logger.info("Chaitu silent 2hrs — nudging")
+                        reply, use_voice = await get_random_message(nudge=True)
+                        if not reply:
+                            return
+                        async with client.action(YOUR_USERNAME, "typing"):
+                            await asyncio.sleep(random.uniform(2, 4))
+                        if use_voice:
+                            async with client.action(YOUR_USERNAME, "record-audio"):
+                                await asyncio.sleep(random.uniform(2, 4))
+                            await send_voice(client, YOUR_USERNAME, reply)
+                        else:
+                            await client.send_message(YOUR_USERNAME, reply)
+                        logger.info(f"Nudge sent: {reply[:80]}")
+                except Exception as e:
+                    logger.error(f"Nudge error: {e}")
+
+            async def send_good_morning():
+                try:
+                    reply = await call_groq([{"role": "user", "content": "Send Chaitu a cute good morning text. You just woke up. Short and natural. Just the message."}])
+                    if reply:
+                        await client.send_message(YOUR_USERNAME, reply)
+                        logger.info("Good morning sent 🌅")
+                except Exception as e:
+                    logger.error(f"Morning error: {e}")
+
+            async def send_good_night():
+                try:
+                    reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. You are about to sleep. Short and loving. Just the message."}])
+                    if reply:
+                        await client.send_message(YOUR_USERNAME, reply)
+                        logger.info("Good night sent 🌙")
+                except Exception as e:
+                    logger.error(f"Night error: {e}")
+
+            scheduler = AsyncIOScheduler(timezone=IST)
+
+            def schedule_messages():
+                for job in scheduler.get_jobs():
+                    if job.id.startswith("rand_"):
+                        job.remove()
+                for total_minute in random.sample(range(480, 810), 10):
+                    h, m = total_minute // 60, total_minute % 60
+                    scheduler.add_job(send_random_message, "cron", hour=h, minute=m, id=f"rand_{h}_{m}")
+                    logger.info(f"Scheduled: {h:02d}:{m:02d} IST")
+
+            if not scheduler.running:
+                schedule_messages()
+                scheduler.add_job(schedule_messages, "cron", hour=0, minute=1)
+                scheduler.add_job(send_good_morning, "cron", hour=8, minute=0, id="morning")
+                scheduler.add_job(send_good_night, "cron", hour=23, minute=0, id="night")
+                scheduler.add_job(update_mood, "cron", hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
+                scheduler.add_job(check_if_silent, "interval", hours=2, id="silence_check")
+                scheduler.start()
+                logger.info("Scheduler running ✅")
+
+            await client.run_until_disconnected()
 
         except Exception as e:
-            logger.error(f"Handle error: {e}")
-
-    async def send_random_message():
-        try:
-            reply, use_voice = await get_random_message(nudge=False)
-            if not reply:
-                return
-            async with client.action(YOUR_USERNAME, "typing"):
-                await asyncio.sleep(random.uniform(2, 5))
-            if use_voice:
-                async with client.action(YOUR_USERNAME, "record-audio"):
-                    await asyncio.sleep(random.uniform(3, 5))
-                await send_voice(client, YOUR_USERNAME, reply)
-            else:
-                await client.send_message(YOUR_USERNAME, reply)
-            logger.info(f"Random msg: {reply[:80]}")
-        except Exception as e:
-            logger.error(f"Random msg error: {e}")
-
-    async def check_if_silent():
-        """If Chaitu hasn't texted in 2+ hours during the day, Shreya nudges him"""
-        try:
-            now = datetime.now(IST)
-            hour = now.hour
-
-            # Only nudge between 9am and 11pm
-            if not (9 <= hour <= 23):
-                return
-
-            # If no message in last 2 hours, nudge
-            if last_message_time is None or (now - last_message_time).total_seconds() > 7200:
-                logger.info("Chaitu hasn't texted in 2hrs — sending nudge")
-                reply, use_voice = await get_random_message(nudge=True)
-                if not reply:
-                    return
-                async with client.action(YOUR_USERNAME, "typing"):
-                    await asyncio.sleep(random.uniform(2, 4))
-                if use_voice:
-                    async with client.action(YOUR_USERNAME, "record-audio"):
-                        await asyncio.sleep(random.uniform(2, 4))
-                    await send_voice(client, YOUR_USERNAME, reply)
-                else:
-                    await client.send_message(YOUR_USERNAME, reply)
-                logger.info(f"Nudge sent: {reply[:80]}")
-        except Exception as e:
-            logger.error(f"Nudge error: {e}")
-
-    async def send_good_morning():
-        try:
-            reply = await call_groq([{"role": "user", "content": "Send Chaitu a cute good morning text. You just woke up. Short and natural. Just the message."}])
-            if reply:
-                await client.send_message(YOUR_USERNAME, reply)
-                logger.info("Good morning sent 🌅")
-        except Exception as e:
-            logger.error(f"Morning error: {e}")
-
-    async def send_good_night():
-        try:
-            reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. You are about to sleep. Short and loving. Just the message."}])
-            if reply:
-                await client.send_message(YOUR_USERNAME, reply)
-                logger.info("Good night sent 🌙")
-        except Exception as e:
-            logger.error(f"Night error: {e}")
-
-    scheduler = AsyncIOScheduler(timezone=IST)
-
-    def schedule_messages():
-        for job in scheduler.get_jobs():
-            if job.id.startswith("rand_"):
-                job.remove()
-        for total_minute in random.sample(range(480, 810), 10):
-            h, m = total_minute // 60, total_minute % 60
-            scheduler.add_job(send_random_message, "cron", hour=h, minute=m, id=f"rand_{h}_{m}")
-            logger.info(f"Scheduled: {h:02d}:{m:02d} IST")
-
-    schedule_messages()
-    scheduler.add_job(schedule_messages, "cron", hour=0, minute=1)
-    scheduler.add_job(send_good_morning, "cron", hour=8, minute=0, id="morning")
-    scheduler.add_job(send_good_night, "cron", hour=23, minute=0, id="night")
-    scheduler.add_job(update_mood, "cron", hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
-
-    # Check every 2 hours if Chaitu has been silent — if so Shreya nudges him
-    scheduler.add_job(check_if_silent, "interval", hours=2, id="silence_check")
-
-    scheduler.start()
-    logger.info("Scheduler running ✅")
-    await client.run_until_disconnected()
+            logger.error(f"Bot crashed: {e} — restarting in 15s...")
+            await asyncio.sleep(15)
 
 async def run_web():
     async def handle(request):
@@ -371,7 +363,7 @@ async def run_web():
     logger.info(f"Web server on port {port} ✅")
 
 async def start():
-    await asyncio.gather(run_web(), main())
+    await asyncio.gather(run_web(), run_bot())
 
 if __name__ == "__main__":
     asyncio.run(start())
