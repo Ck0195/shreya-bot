@@ -2,24 +2,106 @@ import os
 import asyncio
 import random
 import logging
+import tempfile
 import aiohttp
-from aiohttp import web
+import pytz
+from datetime import datetime
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
+from aiohttp import web
+import edge_tts
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 API_ID         = int(os.environ.get("API_ID", "0"))
 API_HASH       = os.environ.get("API_HASH")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY   = os.environ.get("GROQ_API_KEY")
 YOUR_USERNAME  = os.environ.get("YOUR_USERNAME")
 SESSION_STRING = os.environ.get("SESSION_STRING")
+IST            = pytz.timezone("Asia/Kolkata")
 
-SHREYA_PROMPT = """You are Shreya, a 22 year old girl texting her boyfriend Chaitu. You have been together 16 years. You are from Puttur Mangalore, studying at Ramaiah College Bangalore. You did distinction in Bharatanatyam, you are a model for Navaratan Jewels. Text like a real girlfriend - short casual messages, mix English with Kannada words like maaraya houdaa alvaa swalpa, and Hindi like yaar acha arre. Use emojis naturally. Never say you are an AI. Call him Chaitu or baby."""
+conversation_history = []
 
-async def ask_gemini(user_text: str) -> str:
-    logger.info(f"Calling Groq with: {user_text}")
+MOODS = ["happy", "tired", "excited", "moody", "missing you", "focused", "playful"]
+current_mood = random.choice(MOODS)
+
+def update_mood():
+    global current_mood
+    current_mood = random.choice(MOODS)
+    logger.info(f"Mood changed to: {current_mood}")
+
+def get_time_context():
+    hour = datetime.now(IST).hour
+    if 5 <= hour < 12:
+        return "morning"
+    elif 12 <= hour < 17:
+        return "afternoon"
+    elif 17 <= hour < 21:
+        return "evening"
+    else:
+        return "night"
+
+SHREYA_PROMPT = """You are Shreya, a 22 year old girl texting her boyfriend Chaitu. You have been together 16 years. You are from Puttur Mangalore, studying at Ramaiah College Bangalore. You did distinction in Bharatanatyam, also do western dance. You are a model for Navaratan Jewels. You love music.
+
+HOW YOU TEXT — VERY IMPORTANT:
+- Text in plain English like a normal college girl
+- Only occasionally use ONE Kannada word like maaraya or alvaa or houdaa — never mix all languages in one message
+- Never use Hindi and Kannada in the same message
+- Keep replies short — 1 to 2 sentences max
+- Use emojis naturally: 🥺😭💀😂🙄❤️✨😤
+- Never sound like an AI, never be formal, never use bullet points
+- Call him Chaitu or sometimes baby or idiot teasingly
+- Be warm, loving, sometimes sassy, sometimes teasing
+
+GOOD EXAMPLES:
+- "omg chaitu i was literally just thinking about you 🥺"
+- "ugh class was so boring today maaraya 😩"
+- "did you eat?? don't lie to me"
+- "i miss you but you're also so annoying 🙄❤️"
+- "dance practice went well today!! i'm exhausted though 😭"
+
+BAD EXAMPLES — NEVER DO THIS:
+- "houdaa chaitu yaar that's so sweet alvaa" (mixing languages)
+- "Certainly! I understand your message." (AI sounding)
+- Long paragraphs
+
+CURRENT MOOD: {mood}
+TIME OF DAY: {time}"""
+
+RANDOM_PROMPTS = [
+    "Send Chaitu a sweet good morning. Short and natural.",
+    "You just finished a boring lecture at Ramaiah. Text Chaitu.",
+    "You miss Chaitu and are on a study break. Text him.",
+    "You just finished dance practice and are tired. Text Chaitu.",
+    "Text Chaitu something funny that just happened to you.",
+    "Ask Chaitu what he is up to in your casual style.",
+    "You are eating something delicious. Tease Chaitu about it.",
+    "You are frustrated about a college assignment. Vent to Chaitu.",
+    "You just got a compliment on your dancing. Tell Chaitu excitedly.",
+    "You had a great Navaratan Jewels shoot today. Tell Chaitu.",
+    "Send Chaitu a random i miss you text.",
+    "You remembered a funny memory with Chaitu. Text him.",
+    "You are feeling a little low. Text Chaitu.",
+    "You are excited about an upcoming dance performance. Tell Chaitu.",
+]
+
+BUSY_REPLIES = [
+    "in class rn chaitu, talk later 🙄",
+    "omg literally in the middle of practice, give me an hour 😩",
+    "mama called, 2 mins",
+    "ugh assignment due today, brb",
+    "prof is staring at me lol, text you later",
+    "swalpa busy chaitu, give me 20 mins",
+    "shoot is going on, text you when done ✨",
+    "brb group meeting",
+]
+
+def get_prompt():
+    return SHREYA_PROMPT.format(mood=current_mood, time=get_time_context())
+
+async def call_groq(messages: list) -> str:
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
@@ -27,10 +109,7 @@ async def ask_gemini(user_text: str) -> str:
     }
     body = {
         "model": "llama-3.1-8b-instant",
-        "messages": [
-            {"role": "system", "content": SHREYA_PROMPT},
-            {"role": "user", "content": user_text}
-        ],
+        "messages": [{"role": "system", "content": get_prompt()}] + messages,
         "max_tokens": 150,
         "temperature": 1.0
     }
@@ -39,48 +118,143 @@ async def ask_gemini(user_text: str) -> str:
             async with session.post(url, json=body, headers=headers) as resp:
                 data = await resp.json()
                 logger.info(f"Groq response: {data}")
-                reply = data["choices"][0]["message"]["content"].strip()
-                logger.info(f"Reply: {reply}")
-                return reply
+                return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        logger.error(f"Groq call failed: {e}")
-        return "GROQ_FAILED"
+        logger.error(f"Groq failed: {e}")
+        return None
+
+def is_busy() -> bool:
+    return random.random() < 0.15
+
+async def get_reply(user_text: str):
+    global conversation_history
+    if is_busy():
+        return random.choice(BUSY_REPLIES), False
+    if len(conversation_history) > 20:
+        conversation_history = conversation_history[-20:]
+    conversation_history.append({"role": "user", "content": user_text})
+    reply = await call_groq(conversation_history)
+    if not reply:
+        return None, False
+    conversation_history.append({"role": "assistant", "content": reply})
+    use_voice = random.random() < 0.20 and len(reply) < 180
+    return reply, use_voice
+
+async def get_random_message():
+    prompt = random.choice(RANDOM_PROMPTS) + " Write ONLY the message, nothing else, no labels."
+    reply = await call_groq([{"role": "user", "content": prompt}])
+    if not reply:
+        return None, False
+    use_voice = random.random() < 0.15 and len(reply) < 180
+    return reply, use_voice
+
+async def send_voice(client, username, text):
+    try:
+        communicate = edge_tts.Communicate(text, voice="en-IN-NeerjaNeural", rate="-5%")
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+            tmp_path = f.name
+        await communicate.save(tmp_path)
+        await client.send_file(username, tmp_path, voice_note=True)
+        os.remove(tmp_path)
+        logger.info("Voice note sent ✅")
+    except Exception as e:
+        logger.error(f"Voice error: {e}")
+        await client.send_message(username, text)
 
 async def main():
-    logger.info("Starting bot...")
-    logger.info(f"API_ID: {API_ID}")
-    logger.info(f"YOUR_USERNAME: {YOUR_USERNAME}")
-    logger.info(f"Groq_KEY present: {bool(GROQ_API_KEY)}")
-    logger.info(f"SESSION present: {bool(SESSION_STRING)}")
-
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.start()
     logger.info("Shreya connected to Telegram ✅")
 
     @client.on(events.NewMessage(incoming=True))
     async def handle(event):
-        sender = await event.get_sender()
-        logger.info(f"Message from: {sender.username} | Text: {event.raw_text}")
+        try:
+            sender = await event.get_sender()
+            logger.info(f"Message from: {sender.username} | Text: {event.raw_text}")
 
-        # Only reply to YOUR messages
-        if sender.username != YOUR_USERNAME:
-            logger.info("Ignoring message - not from owner")
-            return
+            if sender.username != YOUR_USERNAME:
+                return
 
-        user_text = event.raw_text
-        await asyncio.sleep(random.uniform(2, 5))
+            user_text = event.raw_text
+            if not user_text:
+                return
 
-        async with client.action(sender.username, "typing"):
-            await asyncio.sleep(random.uniform(2, 4))
+            await asyncio.sleep(random.uniform(3, 8))
+            async with client.action(YOUR_USERNAME, "typing"):
+                await asyncio.sleep(random.uniform(2, 5))
 
-        reply = await ask_gemini(user_text)
+            reply, use_voice = await get_reply(user_text)
 
-        if reply == "GEMINI_FAILED":
-            await event.reply("gemini api is not working chaitu 😭")
-        else:
-            await event.reply(reply)
+            if not reply:
+                await event.reply("give me a sec chaitu 😅")
+                return
 
-    logger.info("Bot is ready and listening 👂")
+            if use_voice:
+                async with client.action(YOUR_USERNAME, "record-audio"):
+                    await asyncio.sleep(random.uniform(2, 3))
+                await send_voice(client, YOUR_USERNAME, reply)
+            else:
+                await event.reply(reply)
+
+            logger.info(f"Replied: {reply[:80]}")
+
+        except Exception as e:
+            logger.error(f"Handle error: {e}")
+
+    async def send_random_message():
+        try:
+            reply, use_voice = await get_random_message()
+            if not reply:
+                return
+            async with client.action(YOUR_USERNAME, "typing"):
+                await asyncio.sleep(random.uniform(2, 4))
+            if use_voice:
+                async with client.action(YOUR_USERNAME, "record-audio"):
+                    await asyncio.sleep(random.uniform(2, 3))
+                await send_voice(client, YOUR_USERNAME, reply)
+            else:
+                await client.send_message(YOUR_USERNAME, reply)
+            logger.info(f"Random msg: {reply[:80]}")
+        except Exception as e:
+            logger.error(f"Random msg error: {e}")
+
+    async def send_good_morning():
+        try:
+            reply = await call_groq([{"role": "user", "content": "Send Chaitu a cute good morning text. You just woke up. Short and natural. Just the message nothing else."}])
+            if reply:
+                await client.send_message(YOUR_USERNAME, reply)
+                logger.info("Good morning sent 🌅")
+        except Exception as e:
+            logger.error(f"Morning error: {e}")
+
+    async def send_good_night():
+        try:
+            reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. You are about to sleep. Short and loving. Just the message nothing else."}])
+            if reply:
+                await client.send_message(YOUR_USERNAME, reply)
+                logger.info("Good night sent 🌙")
+        except Exception as e:
+            logger.error(f"Night error: {e}")
+
+    scheduler = AsyncIOScheduler(timezone=IST)
+
+    def schedule_messages():
+        for job in scheduler.get_jobs():
+            if job.id.startswith("rand_"):
+                job.remove()
+        for total_minute in random.sample(range(480, 810), 10):
+            h, m = total_minute // 60, total_minute % 60
+            scheduler.add_job(send_random_message, "cron", hour=h, minute=m, id=f"rand_{h}_{m}")
+            logger.info(f"Scheduled: {h:02d}:{m:02d} IST")
+
+    schedule_messages()
+    scheduler.add_job(schedule_messages, "cron", hour=0, minute=1)
+    scheduler.add_job(send_good_morning, "cron", hour=8, minute=0, id="morning")
+    scheduler.add_job(send_good_night, "cron", hour=23, minute=0, id="night")
+    scheduler.add_job(update_mood, "cron", hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
+
+    scheduler.start()
+    logger.info("Scheduler running ✅")
     await client.run_until_disconnected()
 
 async def run_web():
