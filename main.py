@@ -24,6 +24,10 @@ IST            = pytz.timezone("Asia/Kolkata")
 
 conversation_history = []
 
+# Track if Shreya is currently busy and when she'll be free
+is_currently_busy = False
+busy_free_at = None  # datetime when she becomes free again
+
 MOODS = ["happy", "tired", "excited", "moody", "missing you", "focused", "playful"]
 current_mood = random.choice(MOODS)
 
@@ -47,8 +51,7 @@ SHREYA_PROMPT = """You are Shreya, a 22 year old girl texting her boyfriend Chai
 
 HOW YOU TEXT — VERY IMPORTANT:
 - Text in plain English like a normal college girl
-- Only occasionally use ONE Kannada word like maaraya or alvaa or houdaa — never mix all languages in one message
-- Never use Hindi and Kannada in the same message
+- Only very occasionally use ONE Kannada word like maaraya or alvaa or houdaa — never mix multiple languages in one message
 - Keep replies short — 1 to 2 sentences max
 - Use emojis naturally: 🥺😭💀😂🙄❤️✨😤
 - Never sound like an AI, never be formal, never use bullet points
@@ -87,15 +90,16 @@ RANDOM_PROMPTS = [
     "You are excited about an upcoming dance performance. Tell Chaitu.",
 ]
 
-BUSY_REPLIES = [
-    "in class rn chaitu, talk later 🙄",
-    "omg literally in the middle of practice, give me an hour 😩",
-    "mama called, 2 mins",
-    "ugh assignment due today, brb",
-    "prof is staring at me lol, text you later",
-    "swalpa busy chaitu, give me 20 mins",
-    "shoot is going on, text you when done ✨",
-    "brb group meeting",
+# Busy replies paired with how long she'll actually stay busy (in minutes)
+BUSY_SCENARIOS = [
+    ("in class rn chaitu, text you after 🙄", 60),
+    ("omg literally in the middle of practice, give me an hour 😩", 60),
+    ("mama called, brb", 15),
+    ("ugh assignment submission today, talk later", 45),
+    ("prof is staring at me lol, text you after class", 50),
+    ("swalpa busy chaitu, give me 20 mins", 20),
+    ("shoot is going on, text you when done ✨", 90),
+    ("brb group meeting for project", 30),
 ]
 
 def get_prompt():
@@ -117,27 +121,54 @@ async def call_groq(messages: list) -> str:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body, headers=headers) as resp:
                 data = await resp.json()
-                logger.info(f"Groq response: {data}")
+                logger.info(f"Groq: {data}")
                 return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
         logger.error(f"Groq failed: {e}")
         return None
 
-def is_busy() -> bool:
-    return random.random() < 0.15
-
 async def get_reply(user_text: str):
-    global conversation_history
-    if is_busy():
-        return random.choice(BUSY_REPLIES), False
+    global conversation_history, is_currently_busy, busy_free_at
+
+    # Check if she's still busy
+    if is_currently_busy:
+        now = datetime.now(IST)
+        if busy_free_at and now < busy_free_at:
+            # Still busy — send a short "still busy" nudge
+            mins_left = int((busy_free_at - now).total_seconds() / 60)
+            if mins_left > 5:
+                return f"chaitu still busy 😅 give me {mins_left} more mins", False
+            else:
+                return "almost done chaitu, 2 mins 🙏", False
+        else:
+            # Busy time is over — she's free now
+            is_currently_busy = False
+            busy_free_at = None
+
+    # 15% chance she becomes busy
+    if random.random() < 0.15:
+        scenario, busy_minutes = random.choice(BUSY_SCENARIOS)
+        is_currently_busy = True
+        busy_free_at = datetime.now(IST).replace(
+            minute=(datetime.now(IST).minute + busy_minutes) % 60
+        )
+        # Actually use timedelta for correct time math
+        from datetime import timedelta
+        busy_free_at = datetime.now(IST) + timedelta(minutes=busy_minutes)
+        logger.info(f"Shreya is busy until {busy_free_at.strftime('%H:%M')}")
+        return scenario, False
+
     if len(conversation_history) > 20:
         conversation_history = conversation_history[-20:]
+
     conversation_history.append({"role": "user", "content": user_text})
     reply = await call_groq(conversation_history)
     if not reply:
         return None, False
     conversation_history.append({"role": "assistant", "content": reply})
-    use_voice = random.random() < 0.20 and len(reply) < 180
+
+    # 25% chance of voice note
+    use_voice = random.random() < 0.25 and len(reply) < 200
     return reply, use_voice
 
 async def get_random_message():
@@ -145,7 +176,7 @@ async def get_random_message():
     reply = await call_groq([{"role": "user", "content": prompt}])
     if not reply:
         return None, False
-    use_voice = random.random() < 0.15 and len(reply) < 180
+    use_voice = random.random() < 0.20 and len(reply) < 200
     return reply, use_voice
 
 async def send_voice(client, username, text):
@@ -170,7 +201,7 @@ async def main():
     async def handle(event):
         try:
             sender = await event.get_sender()
-            logger.info(f"Message from: {sender.username} | Text: {event.raw_text}")
+            logger.info(f"Message from: {sender.username} | {event.raw_text}")
 
             if sender.username != YOUR_USERNAME:
                 return
@@ -179,9 +210,14 @@ async def main():
             if not user_text:
                 return
 
-            await asyncio.sleep(random.uniform(3, 8))
+            # Human like delay — 10 to 40 seconds before even starting to type
+            read_delay = random.uniform(10, 40)
+            logger.info(f"Waiting {read_delay:.0f}s before responding...")
+            await asyncio.sleep(read_delay)
+
             async with client.action(YOUR_USERNAME, "typing"):
-                await asyncio.sleep(random.uniform(2, 5))
+                # Typing delay based on reply length — feels real
+                await asyncio.sleep(random.uniform(4, 10))
 
             reply, use_voice = await get_reply(user_text)
 
@@ -191,7 +227,7 @@ async def main():
 
             if use_voice:
                 async with client.action(YOUR_USERNAME, "record-audio"):
-                    await asyncio.sleep(random.uniform(2, 3))
+                    await asyncio.sleep(random.uniform(3, 6))
                 await send_voice(client, YOUR_USERNAME, reply)
             else:
                 await event.reply(reply)
@@ -207,10 +243,10 @@ async def main():
             if not reply:
                 return
             async with client.action(YOUR_USERNAME, "typing"):
-                await asyncio.sleep(random.uniform(2, 4))
+                await asyncio.sleep(random.uniform(2, 5))
             if use_voice:
                 async with client.action(YOUR_USERNAME, "record-audio"):
-                    await asyncio.sleep(random.uniform(2, 3))
+                    await asyncio.sleep(random.uniform(3, 5))
                 await send_voice(client, YOUR_USERNAME, reply)
             else:
                 await client.send_message(YOUR_USERNAME, reply)
@@ -220,19 +256,17 @@ async def main():
 
     async def send_good_morning():
         try:
-            reply = await call_groq([{"role": "user", "content": "Send Chaitu a cute good morning text. You just woke up. Short and natural. Just the message nothing else."}])
+            reply = await call_groq([{"role": "user", "content": "Send Chaitu a cute good morning text. You just woke up. Short and natural. Just the message."}])
             if reply:
                 await client.send_message(YOUR_USERNAME, reply)
-                logger.info("Good morning sent 🌅")
         except Exception as e:
             logger.error(f"Morning error: {e}")
 
     async def send_good_night():
         try:
-            reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. You are about to sleep. Short and loving. Just the message nothing else."}])
+            reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. You are about to sleep. Short and loving. Just the message."}])
             if reply:
                 await client.send_message(YOUR_USERNAME, reply)
-                logger.info("Good night sent 🌙")
         except Exception as e:
             logger.error(f"Night error: {e}")
 
