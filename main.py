@@ -246,6 +246,28 @@ NIGHT_PROMPTS    = [
     "Your mom said something nice about Chaitu. Tell him.",
     "Listening to music. Thinking of Chaitu.",
     "Just feel like talking to Chaitu.",
+    "Send Chaitu a cheesy but cute line. Something like you are my favourite person.",
+    "Tell Chaitu you are lucky to have him but say it in a cute shy way.",
+    "Send Chaitu a random compliment at night.",
+    "Tell Chaitu something you love about him without being too mushy.",
+    "Ask Chaitu if he is thinking about you.",
+    "Send Chaitu a flirty teasing night message.",
+    "Tell Chaitu he is your favourite person in a cute way.",
+    "Send Chaitu a cute goodnight type message mid night.",
+    "Tell Chaitu you want to see him soon.",
+    "Send Chaitu a message about a dream or thought you had about him.",
+]
+CHEESY_PROMPTS = [
+    "Send Chaitu one short cheesy romantic line. Keep it cute not cringe.",
+    "Tell Chaitu he makes your day better without being too over the top.",
+    "Send Chaitu a flirty one liner.",
+    "Tell Chaitu something sweet about your 16 years together.",
+    "Send Chaitu a cute shy compliment.",
+    "Tell Chaitu he is your favourite person casually.",
+    "Send Chaitu a random I'm glad you exist type message.",
+    "Tell Chaitu something you like about him. Keep it short and real.",
+    "Send Chaitu a cute message about missing him.",
+    "Tell Chaitu you think about him randomly. Be cute about it.",
 ]
 WEEKEND_PROMPTS  = [
     "Free weekend. Text Chaitu something fun.",
@@ -323,6 +345,9 @@ FOLLOWUP_TEMPLATES = {
 }
 
 def get_random_prompts():
+    # 20% chance of cheesy message regardless of time
+    if random.random() < 0.20:
+        return CHEESY_PROMPTS
     if is_weekend():
         return WEEKEND_PROMPTS
     hour = datetime.now(IST).hour
@@ -672,9 +697,12 @@ async def run_bot():
                 for job in scheduler.get_jobs():
                     if job.id.startswith("rand_"):
                         job.remove()
-                for total_minute in random.sample(range(480, 810), 10):
+                # 30+ messages spread across 8am to 11pm
+                all_minutes = random.sample(range(480, 1380), 32)
+                for total_minute in all_minutes:
                     h, m = total_minute // 60, total_minute % 60
                     scheduler.add_job(send_random_message, "cron", hour=h, minute=m, id=f"rand_{h}_{m}")
+                    logger.info(f"Scheduled: {h:02d}:{m:02d} IST")
 
             if not scheduler.running:
                 schedule_random()
