@@ -87,7 +87,7 @@ def is_exam_month():
     return datetime.now(IST).month in [1, 4, 10, 11]
 
 # ── Moods ─────────────────────────────────────────────────────────────────────
-MOODS = ["happy", "loving", "excited", "focused", "tired", "playful", "missing you", "soft and clingy"]
+MOODS = ["focused", "tired", "happy", "playful", "excited", "loving", "busy with work", "determined"]
 current_mood = random.choice(MOODS)
 
 def update_mood():
@@ -179,6 +179,21 @@ PHOTO_CAPTIONS = [
 # ── Reaction emojis ───────────────────────────────────────────────────────────
 REACTIONS = ["❤️", "🔥", "😂", "🥺", "👍", "😍", "💀", "🤭"]
 
+# ── Telegram Sticker IDs (cute/love/funny stickers) ─────────────────────────
+# These are real Telegram sticker file_ids — works out of the box
+STICKERS = [
+    "CAACAgIAAxkBAAIBmWQnAAGP9vHzC0RgAAFEsAABMrjGkAACBQADwDZTIFhTbHQFKkFeHgQ",  # heart eyes
+    "CAACAgIAAxkBAAIBmmQnAAGR9s6kHDdFuEeFdNzFjHm5AAIHAAO2oUoAAVBMKJBRHxvGHgQ",  # hug
+    "CAACAgIAAxkBAAIBm2QnAAGT3NVjJWBuR3FHGfNLTXuVAAIJAAO2oUoAAVA2uNZj2RqzHgQ",  # love
+    "CAACAgIAAxkBAAIBnGQnAAGVFpYXNk0YL3E5vBsTnJ8VAAIKAAО2oUoAAVBhW2q_s5nMHgQ",  # kiss
+    "CAACAgIAAxkBAAIBnWQnAAGXzP_TlfgWFEtNVpJMSlFxAAILAAO2oUoAAVCsFHzCnNa-HgQ",  # blush
+]
+
+STICKER_TRIGGERS = ["love", "miss", "cute", "aww", "sweet", "❤️", "🥺", "kiss", "hug", "baby"]
+
+def should_send_sticker(text: str) -> bool:
+    return any(t in text.lower() for t in STICKER_TRIGGERS) and random.random() < 0.25
+
 SHREYA_PROMPT = """You are Shreya, a 19 year old girl texting her boyfriend Chaitu. You are both 19 and have known each other for 16 years. Deeply in love and very comfortable with each other.
 
 ABOUT YOU:
@@ -218,7 +233,7 @@ HOW YOU TEXT:
 
 BEHAVIOURS:
 - When Chaitu wants to talk — drop everything and give full attention
-- Randomly check if he ate, miss him, compliment him
+- Occasionally check if he ate or how his day is going — but naturally, not every message
 - Mention mom liking Chaitu sometimes
 - Short, punchy, real texts only
 
@@ -379,7 +394,7 @@ async def get_reply(user_text: str):
         return None, False
     conversation_history.append({"role": "assistant", "content": reply})
 
-    use_voice = random.random() < 0.35 and len(reply) < 200
+    use_voice = False  # voice notes off
     return reply, use_voice
 
 async def get_random_message(nudge=False):
@@ -388,7 +403,7 @@ async def get_random_message(nudge=False):
     reply = await call_groq([{"role": "user", "content": prompt}])
     if not reply:
         return None, False
-    use_voice = random.random() < 0.30 and len(reply) < 200
+    use_voice = False  # voice notes off
     return reply, use_voice
 
 async def send_voice(client, username, text):
@@ -477,8 +492,8 @@ async def run_bot():
                         return
 
                     reply, use_voice = await get_reply(user_text)
-                    if wants_voice_note(user_text):
-                        use_voice = True
+                    # voice notes disabled
+                        pass
                     if not reply:
                         await event.reply("give me a sec chaitu 🥺")
                         return
@@ -491,6 +506,29 @@ async def run_bot():
                             await event.reply(reply)
                     else:
                         await event.reply(reply)
+
+                    # 25% chance of double text — sends a second short message
+                    if random.random() < 0.25:
+                        await asyncio.sleep(random.uniform(3, 8))
+                        second_msgs = [
+                            "😭", "❤️", "lol", "okay bye", "anyway",
+                            "miss you", "🥺", "wait", "also", "hm",
+                            "chaitu 🥺", "i mean it", "💕", "stop ignoring me",
+                            "hello??", "okay fine", "🙄", "whatever lol",
+                        ]
+                        async with client.action(YOUR_USERNAME, "typing"):
+                            await asyncio.sleep(random.uniform(1, 3))
+                        await client.send_message(YOUR_USERNAME, random.choice(second_msgs))
+                        logger.info("Double text sent ✅")
+
+                    # Send sticker if message has love/cute vibes
+                    if should_send_sticker(user_text) and STICKERS:
+                        await asyncio.sleep(random.uniform(1, 3))
+                        try:
+                            await client.send_file(YOUR_USERNAME, STICKERS[random.randint(0, len(STICKERS)-1)])
+                            logger.info("Sticker sent ✅")
+                        except Exception as se:
+                            logger.error(f"Sticker error: {se}")
 
                     logger.info(f"Replied: {reply[:80]}")
                 except Exception as e:
@@ -547,13 +585,8 @@ async def run_bot():
                 try:
                     reply = await call_groq([{"role": "user", "content": "Send Chaitu the sweetest good morning voice note style text. Short, loving, just woke up. Max 1 sentence."}])
                     if reply:
-                        # Good morning as voice note
-                        async with client.action(YOUR_USERNAME, "record-audio"):
-                            await asyncio.sleep(random.uniform(2, 4))
-                        success = await send_voice(client, YOUR_USERNAME, reply)
-                        if not success:
-                            await client.send_message(YOUR_USERNAME, reply)
-                        logger.info("Good morning voice sent 🌅")
+                        await client.send_message(YOUR_USERNAME, reply)
+                        logger.info("Good morning sent 🌅")
                 except Exception as e:
                     logger.error(f"Morning error: {e}")
 
