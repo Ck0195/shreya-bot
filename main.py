@@ -441,7 +441,8 @@ TIME RULES — VERY IMPORTANT:
 
 HOW YOU TEXT:
 - Plain English — at most ONE regional word like maaraya or alvaa per message
-- MAXIMUM 1 sentence usually. Sometimes just 2-5 words.
+- Sometimes 1 sentence, sometimes 2 — totally random like real texting. Never 3 lines ever.
+- Emojis minimal — 1 or 2 max per message, sometimes none at all
 - Use 1 to 3 emojis per message maximum
 - Only when very dramatic or emotional use 4 emojis — never more than 4
 - Never stack emojis in a row unless extremely expressive
@@ -677,11 +678,22 @@ def get_prompt(jealous=False, short_reply=False, progression_context=""):
 async def call_groq(messages: list, jealous=False, short_reply=False, progression_context="") -> str:
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+    # Always inject the last user message as a direct instruction
+    last_user_msg = ""
+    for m in reversed(messages):
+        if m["role"] == "user":
+            last_user_msg = m["content"]
+            break
+
+    system = get_prompt(jealous, short_reply, progression_context)
+    if last_user_msg:
+        system += f"\n\nChaitu just said: \"{last_user_msg}\"\nRespond ONLY to what he said. Do not ignore his message. 1-2 lines max."
+
     body = {
         "model": "llama-3.1-8b-instant",
-        "messages": [{"role": "system", "content": get_prompt(jealous, short_reply, progression_context)}] + messages,
-        "max_tokens": 60,
-        "temperature": 1.0,
+        "messages": [{"role": "system", "content": system}] + messages,
+        "max_tokens": 55,
+        "temperature": 0.9,
     }
     try:
         async with aiohttp.ClientSession() as session:
