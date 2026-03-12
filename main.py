@@ -28,10 +28,12 @@ IST            = pytz.timezone("Asia/Kolkata")
 conversation_history = []
 is_currently_busy    = False
 busy_free_at         = None
-busy_reason          = None   # what she said she was doing
+busy_reason          = None
 last_reply_time      = None
 is_jealous           = False
-short_reply_count    = 0      # track how many short replies Chaitu sent in a row
+short_reply_count    = 0
+recent_replies       = []     # track last 8 replies to avoid repetition
+conversation_topic   = None   # track current topic for flow
 
 # ── Memory ────────────────────────────────────────────────────────────────────
 MEMORY_FILE = "/tmp/shreya_memory.json"
@@ -675,7 +677,7 @@ def get_prompt(jealous=False, short_reply=False, progression_context=""):
     )
 
 # ── Groq ──────────────────────────────────────────────────────────────────────
-async def call_groq(messages: list, jealous=False, short_reply=False, progression_context="") -> str:
+async def call_groq(messages: list, jealous=False, short_reply=False, progression_context="", avoid_context="") -> str:
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     # Always inject the last user message as a direct instruction
@@ -687,13 +689,15 @@ async def call_groq(messages: list, jealous=False, short_reply=False, progressio
 
     system = get_prompt(jealous, short_reply, progression_context)
     if last_user_msg:
-        system += f"\n\nChaitu just said: \"{last_user_msg}\"\nRespond ONLY to what he said. Do not ignore his message. 1-2 lines max."
+        system += f"\n\nChaitu just said: \"{last_user_msg}\"\nRespond ONLY to what he said. 1-2 lines max."
+    if avoid_context:
+        system += avoid_context
 
     body = {
         "model": "llama-3.1-8b-instant",
         "messages": [{"role": "system", "content": system}] + messages,
         "max_tokens": 55,
-        "temperature": 0.9,
+        "temperature": 0.85,
     }
     try:
         async with aiohttp.ClientSession() as session:
@@ -807,38 +811,61 @@ async def get_reply(user_text: str):
         logger.info("Shreya left message on read")
         return None
 
-    if len(conversation_history) > 20:
-        conversation_history = conversation_history[-20:]
+    if len(conversation_history) > 30:
+        conversation_history = conversation_history[-30:]
 
     conversation_history.append({"role": "user", "content": user_text})
+
+    # Build recent replies context to avoid repetition
+    avoid_str = ""
+    if recent_replies:
+        avoid_str = "\n\nDo NOT say anything similar to these recent replies you already sent: " + " | ".join(recent_replies[-6:])
+
     reply = await call_groq(
         conversation_history,
         jealous=is_jealous,
-        short_reply=(short_reply_count >= 2)
+        short_reply=(short_reply_count >= 2),
+        avoid_context=avoid_str
     )
     if not reply:
         return None
+
+    # Track recent replies for repetition prevention
+    recent_replies.append(reply)
+    if len(recent_replies) > 8:
+        recent_replies.pop(0)
+
     conversation_history.append({"role": "assistant", "content": reply})
     return reply
 
+# Track recently used prompts to avoid repeats
+_used_prompts = []
+
 async def get_random_message(nudge=False, meal=None):
+    global _used_prompts
     if meal and meal in MEAL_PROMPTS:
         prompt = random.choice(MEAL_PROMPTS[meal])
     elif nudge:
         prompt = random.choice(NUDGE_PROMPTS)
     else:
         prompts = get_random_prompts()
-        # Handle goal reminder
         if prompts == ["GOAL_REMINDER"]:
             goals = get_goals()
             if goals:
-                goal = random.choice(goals)
                 if random.random() < 0.40:
                     return random.choice(FLIRTY_MOTIVATION_MSGS)
                 else:
                     return random.choice(MOTIVATION_MSGS)
-        prompt = random.choice(prompts)
-    prompt += " Write ONLY the message with emojis. Max 1 sentence."
+        # Pick a prompt not used recently
+        unused = [p for p in prompts if p not in _used_prompts]
+        if not unused:
+            _used_prompts = []
+            unused = prompts
+        prompt = random.choice(unused)
+        _used_prompts.append(prompt)
+        if len(_used_prompts) > 10:
+            _used_prompts = _used_prompts[-10:]
+    prompt += " Write ONLY the message. Max 1-2 sentences. Natural and casual. Don't repeat things already said today."
     return await call_groq([{"role": "user", "content": prompt}])
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -897,9 +924,9 @@ async def run_bot():
                     last_reply_time = datetime.now(IST)
                     logger.info(f"Chaitu: {user_text}")
 
-                    # 40% chance reaction
-                    if random.random() < 0.40:
-                        await asyncio.sleep(random.uniform(1, 3))
+                    # Only react on meaningful messages, 20% chance, with realistic delay
+                    if random.random() < 0.20 and len(user_text.split()) > 3:
+                        await asyncio.sleep(random.uniform(10, 30))
                         await send_reaction(client, event)
 
                     # Delay — longer for normal messages, shorter if he wants to talk
