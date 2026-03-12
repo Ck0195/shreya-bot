@@ -61,9 +61,81 @@ def add_to_memory(fact: str):
 
 def get_memory_context():
     memory = load_memory()
-    if not memory["facts"]:
-        return ""
-    return "Things you remember about Chaitu: " + " | ".join(memory["facts"][-10:])
+    facts_str = ""
+    if memory["facts"]:
+        facts_str = "Things you remember about Chaitu: " + " | ".join(memory["facts"][-10:])
+    goals = get_goals()
+    goals_str = ""
+    if goals:
+        goals_str = " | Chaitu's current goals: " + " | ".join(goals[-5:])
+    return facts_str + goals_str
+
+# ── Goals tracking ───────────────────────────────────────────────────────────
+GOALS_FILE = "/tmp/shreya_goals.json"
+
+def load_goals():
+    try:
+        if os.path.exists(GOALS_FILE):
+            with open(GOALS_FILE, "r") as f:
+                return json.load(f)
+    except:
+        pass
+    return {"goals": []}
+
+def save_goals(data):
+    try:
+        with open(GOALS_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.error(f"Goals save: {e}")
+
+def add_goal(goal: str):
+    data = load_goals()
+    if goal not in data["goals"]:
+        data["goals"].append(goal)
+        data["goals"] = data["goals"][-10:]
+        save_goals(data)
+        logger.info(f"Goal saved: {goal}")
+
+def get_goals():
+    return load_goals().get("goals", [])
+
+def detect_goal(text: str):
+    """Detect if Chaitu is sharing a goal or task"""
+    triggers = ["learning", "studying", "want to learn", "trying to", "working on",
+                "started", "i will", "i'm going to", "need to finish", "my goal",
+                "practicing", "building", "coding", "reading", "preparing",
+                "training", "i want to", "gonna", "planning to"]
+    text_lower = text.lower()
+    if any(t in text_lower for t in triggers):
+        return text[:150]
+    return None
+
+MOTIVATION_MSGS = [
+    "chaitu you better be working on it rn 😤",
+    "no excuses chaitu finish it 💪",
+    "you started it so you're finishing it okay 😤",
+    "chaitu don't give up on this pls 🥺",
+    "i believe in you but also get back to work 😭💪",
+    "ngl you're going to feel so good when you finish it ✨",
+    "chaitu focus 😤 you got this",
+    "not you slacking when you have work to do 🙄💪",
+    "chaitu i'm going to ask you about your progress later okay 😤",
+    "you're so close just keep going 🥺✨",
+]
+
+FLIRTY_MOTIVATION_MSGS = [
+    "chaitu finish your work and then i'm all yours 🤭❤️",
+    "the faster you finish the sooner we can talk properly 😏🥺",
+    "ngl hardworking chaitu is actually so attractive 😍 keep going",
+    "chaitu finish it and i'll give you a surprise 🤭",
+    "i like you more when you're being productive ngl 😍",
+    "okay but focused chaitu is my favourite chaitu 🥺😍",
+    "finish your work and i'll say something really nice 🤭❤️",
+    "chaitu the grind looks good on you 😍 keep going",
+    "not me finding motivated chaitu extremely cute 🤭💕",
+    "finish it chaitu and i'll stop being mean for one whole day 😂❤️",
+]
 
 def should_remember(text: str):
     triggers = ["my birthday", "i like", "i love", "i hate", "i am", "i'm",
@@ -467,6 +539,10 @@ FOLLOWUP_TEMPLATES = {
 }
 
 def get_random_prompts():
+    # 15% chance of goal reminder if Chaitu has goals saved
+    if random.random() < 0.15 and get_goals():
+        return ["GOAL_REMINDER"]  # special flag
+
     # 20% chance of cheesy message regardless of time
     if random.random() < 0.20:
         return CHEESY_PROMPTS
@@ -543,6 +619,17 @@ async def get_reply(user_text: str):
     fact = should_remember(user_text)
     if fact:
         add_to_memory(fact)
+
+    # Detect and save goals
+    goal = detect_goal(user_text)
+    if goal:
+        add_goal(goal)
+        # Immediately motivate when he shares a goal
+        if random.random() < 0.80:
+            if random.random() < 0.40:
+                return random.choice(FLIRTY_MOTIVATION_MSGS)
+            else:
+                return random.choice(MOTIVATION_MSGS)
 
     if wants_to_talk(user_text) and is_currently_busy:
         is_currently_busy = False
@@ -640,7 +727,17 @@ async def get_random_message(nudge=False, meal=None):
     elif nudge:
         prompt = random.choice(NUDGE_PROMPTS)
     else:
-        prompt = random.choice(get_random_prompts())
+        prompts = get_random_prompts()
+        # Handle goal reminder
+        if prompts == ["GOAL_REMINDER"]:
+            goals = get_goals()
+            if goals:
+                goal = random.choice(goals)
+                if random.random() < 0.40:
+                    return random.choice(FLIRTY_MOTIVATION_MSGS)
+                else:
+                    return random.choice(MOTIVATION_MSGS)
+        prompt = random.choice(prompts)
     prompt += " Write ONLY the message with emojis. Max 1 sentence."
     return await call_groq([{"role": "user", "content": prompt}])
 
