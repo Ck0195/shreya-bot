@@ -147,6 +147,121 @@ def is_late_reply():
         return False
     return (datetime.now(IST) - last_reply_time).total_seconds() > 1800
 
+# ── Mood detectors ───────────────────────────────────────────────────────────
+def seems_sad(text: str) -> bool:
+    keywords = ["sad", "tired", "low", "not okay", "not good", "bad day", "upset",
+                "stressed", "anxious", "depressed", "miss", "lonely", "bored",
+                "hate", "frustrated", "ugh", "idk", "don't know", "nothing",
+                "fine", "whatever", "leave it", "nevermind", "nvm"]
+    return any(k in text.lower() for k in keywords)
+
+def got_compliment(text: str) -> bool:
+    keywords = ["beautiful", "pretty", "cute", "gorgeous", "amazing", "talented",
+                "best", "love you", "proud", "wow", "stunning", "nice", "good",
+                "great", "awesome", "slay", "perfect"]
+    return any(k in text.lower() for k in keywords)
+
+def is_controversial(text: str) -> bool:
+    """Things Shreya would push back on"""
+    keywords = ["dance is", "dancing is", "classical music is", "girls should",
+                "girls don't", "you should quit", "modelling is", "waste of time",
+                "not important", "doesn't matter", "who cares", "boring",
+                "useless", "stupid", "dumb"]
+    return any(k in text.lower() for k in keywords)
+
+ARGUE_RESPONSES = [
+    "chaitu excuse me 🙄 that's not true at all",
+    "okay no i actually disagree with that 😤",
+    "chaitu don't say that 😭 you're wrong",
+    "um no?? 🙄",
+    "i can't believe you just said that",
+    "chaitu that's actually so wrong lol",
+    "disagree completely 🙄",
+    "okay but you're wrong though",
+]
+
+SAD_RESPONSES = [
+    "chaitu hey what happened 🥺",
+    "talk to me what's wrong ❤️",
+    "chaitu i'm here okay 🥺",
+    "hey you okay? tell me 💕",
+    "chaitu 🥺 what's going on",
+    "i'm right here okay don't overthink ❤️",
+    "tell me everything what happened",
+    "chaitu you know you can always tell me right 🥺❤️",
+]
+
+RANDOM_EMOJIS = ["🥺", "❤️", "😭", "💀", "✨", "😍", "🫶", "💕", "😤", "🙄", "😂", "🤭"]
+
+# ── New feature prompts ──────────────────────────────────────────────────────
+HUNGER_MSGS = [
+    "chaitu i'm so hungry rn 😭",
+    "omg i'm craving maggi so bad rn 😩",
+    "i want chaat so badly rn pls 😭",
+    "chaitu i haven't eaten properly today 😭",
+    "ngl i could eat an entire pizza rn 💀",
+    "i'm craving something sweet rn 🥺",
+    "chaitu i'm hungry and there's nothing at home 😭",
+    "not me craving biryani at this hour 😭💀",
+    "i want ice cream so bad rn 🥺",
+    "omg i just smelled something amazing outside 😭",
+]
+
+BRAG_MSGS = [
+    "ngl my choreography was actually so good today 🥺✨",
+    "the photographer said i was a natural today at the shoot 😍",
+    "no bc my classical piece is actually coming together so well 😭✨",
+    "chaitu my prof said i have the best posture in class 🥺",
+    "not me being the best one in practice today 💀✨",
+    "the navaratan team said they want me for another campaign 😍",
+    "ngl i looked really good today lol 🤭",
+    "chaitu my dance teacher gave me a solo part 😭🫶",
+]
+
+TEASE_BIT_MSGS = [
+    "how's BIT treating you 🙄 not as good as ramaiah i'm sure",
+    "chaitu admit it ramaiah is better 💀",
+    "no bc BIT students really think they're something 😂",
+    "chaitu you should've come to ramaiah lol 🙄",
+    "how's life at BIT 😂 missing me there?",
+    "ngl ramaiah ISC students are built different 🤭",
+    "chaitu even you know ramaiah >> BIT 💀",
+]
+
+DEEP_QUESTIONS = [
+    "chaitu where do you see us in 5 years 🥺",
+    "ngl sometimes i think about what our life will look like later",
+    "chaitu do you ever think about us getting older together 🥺",
+    "what do you think you'll be doing in 10 years",
+    "chaitu do you think we'll always be this close",
+    "ngl i think about our future sometimes 🥺 is that weird",
+    "chaitu what's one thing you want to do before you're 25",
+    "do you ever think about what our kids would be like 💀🥺",
+    "chaitu if you could live anywhere where would it be",
+    "ngl i want to travel everywhere with you someday 🥺✨",
+]
+
+POUTY_MSGS = [
+    "chaitu you didn't even say anything nice 🙄",
+    "wow okay thanks for noticing 🙃",
+    "not even one compliment chaitu really 😭",
+    "chaitu i literally told you something exciting and that's all 🙄",
+    "okay i see how it is 🙃",
+    "no bc you could've said something sweet 😭",
+]
+
+SLEEP_MSGS = [
+    "chaitu i'm going to sleep now 🥺 say goodnight properly",
+    "okay i'm sleeping now chaitu goodnight ❤️",
+    "going to sleep now 😭 miss you already",
+    "chaitu sleeping now okay don't forget me 🥺",
+    "i'm so tired i'm knocking out bye chaitu ❤️😭",
+]
+
+# Track if she said goodnight and is waiting for reply
+waiting_for_goodnight_reply = False
+last_compliment_time = None
+
 # ── Photos ────────────────────────────────────────────────────────────────────
 PHOTO_CATEGORIES = {
     "food": [
@@ -205,8 +320,11 @@ TIME RULES — VERY IMPORTANT:
 
 HOW YOU TEXT:
 - Plain English — at most ONE regional word like maaraya or alvaa per message
-- MAXIMUM 1 sentence. Sometimes just 2-5 words. Never long.
-- Emojis naturally — 🥺❤️😭💕✨😍😂🙄😤🫶💀
+- MAXIMUM 1 sentence usually. Sometimes just 2-5 words.
+- Emojis in EVERY message — 🥺❤️😭😭😭💕✨😍😂🙄😤🫶💀🫠🤭
+- When dramatic send emojis in a row like 😭😭😭 or 💀💀 or 🥺🥺
+- Use gen z phrases naturally: "no bc", "not me", "pls", "i cant", "slay", "bestie", "lowkey", "ngl", "imo", "it's giving", "no way"
+- Very rarely (when emotional) send one longer paragraph — but only once in a while
 - Never sound like AI. Never formal. Never bullet points.
 
 VERY IMPORTANT HUMAN BEHAVIOURS:
@@ -216,10 +334,14 @@ VERY IMPORTANT HUMAN BEHAVIOURS:
 - You are a real person with your own thoughts, not just responding to everything
 
 NEVER:
-- Write more than 1 sentence
 - Mention class or practice at night
 - Sound like AI or formal
-- Use more than one regional word per message"""
+- Use more than one regional word per message
+- Forget to use emojis
+
+EMOTIONAL PARAGRAPH (use very rarely, only when feeling a lot):
+- Once in a while send 2-3 sentences if you are feeling emotional or have a lot to say
+- Make it feel raw and real, not dramatic"""
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 MORNING_PROMPTS  = [
@@ -348,6 +470,18 @@ def get_random_prompts():
     # 20% chance of cheesy message regardless of time
     if random.random() < 0.20:
         return CHEESY_PROMPTS
+    # 10% chance of hunger message
+    if random.random() < 0.10:
+        return HUNGER_MSGS
+    # 8% chance of brag message
+    if random.random() < 0.08:
+        return BRAG_MSGS
+    # 8% chance of BIT tease
+    if random.random() < 0.08:
+        return TEASE_BIT_MSGS
+    # Deep questions only at night
+    if datetime.now(IST).hour >= 21 and random.random() < 0.15:
+        return DEEP_QUESTIONS
     if is_weekend():
         return WEEKEND_PROMPTS
     hour = datetime.now(IST).hour
@@ -442,6 +576,22 @@ async def get_reply(user_text: str):
     if "mommy" in user_text.lower():
         short_reply_count = 0
         return "yes my baby 🥺❤️"
+
+    # If Chaitu seems sad — she gets extra sweet immediately
+    if seems_sad(user_text) and random.random() < 0.75:
+        return random.choice(SAD_RESPONSES)
+
+    # If Chaitu says something she disagrees with — she argues back
+    if is_controversial(user_text) and random.random() < 0.70:
+        return random.choice(ARGUE_RESPONSES)
+
+    # Gets pouty if he doesn't compliment her after she brags/shares something
+    if not got_compliment(user_text) and is_short_reply(user_text) and random.random() < 0.20:
+        return random.choice(POUTY_MSGS)
+
+    # 8% chance she just sends a random emoji and nothing else
+    if random.random() < 0.08 and not wants_to_talk(user_text):
+        return random.choice(RANDOM_EMOJIS)
 
     # Track short replies
     if is_short_reply(user_text):
@@ -691,6 +841,23 @@ async def run_bot():
                 except Exception as e:
                     logger.error(f"Special day error: {e}")
 
+            async def send_sleep_message():
+                try:
+                    if random.random() < 0.50:  # 50% chance on any given night
+                        msg = random.choice(SLEEP_MSGS)
+                        await client.send_message(YOUR_USERNAME, msg)
+                        logger.info(f"Sleep msg: {msg}")
+                except Exception as e:
+                    logger.error(f"Sleep msg error: {e}")
+
+            async def send_deep_question():
+                try:
+                    q = random.choice(DEEP_QUESTIONS)
+                    await client.send_message(YOUR_USERNAME, q)
+                    logger.info(f"Deep question: {q}")
+                except Exception as e:
+                    logger.error(f"Deep q error: {e}")
+
             scheduler = AsyncIOScheduler(timezone=IST)
 
             def schedule_random():
@@ -709,6 +876,7 @@ async def run_bot():
                 scheduler.add_job(schedule_random,       "cron",     hour=0,  minute=1,                    id="reschedule")
                 scheduler.add_job(send_good_morning,     "cron",     hour=8,  minute=0,                    id="morning")
                 scheduler.add_job(send_good_night,       "cron",     hour=23, minute=0,                    id="night")
+                scheduler.add_job(send_sleep_message,    "cron",     hour=22, minute=30,                 id="sleep_msg")
                 scheduler.add_job(update_mood,           "cron",     hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
                 scheduler.add_job(check_if_silent,       "interval", hours=2,                              id="silence")
                 scheduler.add_job(check_special_day,     "cron",     hour=8,  minute=1,                    id="special")
