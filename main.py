@@ -63,11 +63,11 @@ def get_memory_context():
     memory = load_memory()
     facts_str = ""
     if memory["facts"]:
-        facts_str = "Things you remember about Chaitu: " + " | ".join(memory["facts"][-10:])
+        facts_str = "Things you remember about Chaitu (bring these up naturally in conversation sometimes): " + " | ".join(memory["facts"][-10:])
     goals = get_goals()
     goals_str = ""
     if goals:
-        goals_str = " | Chaitu's current goals: " + " | ".join(goals[-5:])
+        goals_str = " | Chaitu current goals/tasks (remind him and motivate him about these): " + " | ".join(goals[-5:])
     return facts_str + goals_str
 
 # ── Goals tracking ───────────────────────────────────────────────────────────
@@ -138,10 +138,21 @@ FLIRTY_MOTIVATION_MSGS = [
 ]
 
 def should_remember(text: str):
-    triggers = ["my birthday", "i like", "i love", "i hate", "i am", "i'm",
-                "my favourite", "i work", "i study", "remember", "my friend"]
+    triggers = [
+        # Personal facts
+        "my birthday", "i like", "i love", "i hate", "i am", "i'm",
+        "my favourite", "i work", "i study", "remember", "my friend",
+        # Daily life — exams, tasks, events
+        "exam", "test", "result", "marks", "assignment", "submission",
+        "interview", "presentation", "project", "viva", "semester",
+        "holiday", "trip", "going to", "tomorrow", "next week",
+        "mom", "dad", "family", "sick", "hospital", "doctor",
+        "bought", "got", "received", "won", "lost", "failed", "passed",
+    ]
     if any(t in text.lower() for t in triggers):
-        return text[:120]
+        # Add date context so she knows when this was said
+        date_str = datetime.now(IST).strftime("%d %b")
+        return f"[{date_str}] {text[:120]}"
     return None
 
 # ── Moods ─────────────────────────────────────────────────────────────────────
@@ -233,6 +244,18 @@ def got_compliment(text: str) -> bool:
                 "great", "awesome", "slay", "perfect"]
     return any(k in text.lower() for k in keywords)
 
+def mentions_girl(text: str) -> bool:
+    """Detect if Chaitu is talking about another girl"""
+    text_lower = text.lower()
+    # Generic girl references
+    generic = ["she", "her", "this girl", "a girl", "some girl", "my classmate",
+               "my friend", "female", "woman", "lady"]
+    # Only trigger if clearly talking about a specific girl
+    suspicious = ["she said", "she texted", "she called", "she messaged",
+                  "this girl", "some girl", "a girl", "she's", "her name",
+                  "she is", "she was", "she told", "she asked", "she sent"]
+    return any(s in text_lower for s in suspicious)
+
 def is_controversial(text: str) -> bool:
     """Things Shreya would push back on"""
     keywords = ["dance is", "dancing is", "classical music is", "girls should",
@@ -250,6 +273,32 @@ ARGUE_RESPONSES = [
     "chaitu that's actually so wrong lol",
     "disagree completely 🙄",
     "okay but you're wrong though",
+]
+
+GIRL_JEALOUS_RESPONSES = [
+    "chaitu who is she 🙂",
+    "oh interesting who's this girl",
+    "okay and why are you telling me about her 🙂",
+    "chaitu i swear 😤 who is she",
+    "not me having to hear about another girl 🙂",
+    "chaitu you better explain rn 😤",
+    "who. is. she. 🙂",
+    "okay so you just casually mention girls to me now 🙂",
+    "chaitu i'm the only girl you should be talking about 😤",
+    "interesting 🙂 tell me more about this girl chaitu",
+]
+
+POSSESSIVE_RESPONSES = [
+    "chaitu you're mine okay don't forget that 😤❤️ not that i'm worried lol",
+    "i don't share chaitu. just so you know 🙂 not that you'd do anything anyway",
+    "ngl you talking about other girls is not it 😤 you know i trust you though",
+    "chaitu focus on me 😤 you're all mine and we both know it",
+    "you have me so why are you even noticing other girls 🙂😤 lol i'm not actually mad",
+    "chaitu i'm literally right here 😤❤️",
+    "okay so should i also start talking about other guys 🙂 just saying",
+    "chaitu you know i get possessive but also i know you're fully mine so 😤❤️",
+    "you're lucky i trust you completely 🙂 but still don't test me lol",
+    "chaitu you're mine and i'm yours and we both know nothing's changing that 😤❤️",
 ]
 
 SAD_RESPONSES = [
@@ -473,6 +522,13 @@ NUDGE_PROMPTS    = [
     "Haven't heard from Chaitu. Check on him.",
     "Chaitu is quiet. Small casual message to him.",
 ]
+
+EXAM_FOLLOW_PROMPTS = [
+    "Ask Chaitu how his exam went today. Be caring.",
+    "Chaitu had an exam. Check on him and encourage him.",
+    "Ask Chaitu about his exam results. Be sweet about it.",
+    "Remind Chaitu to prepare for his upcoming exam. Motivate him.",
+]
 MEAL_PROMPTS = {
     "breakfast": [
         "Ask Chaitu if he had breakfast. Be casual and caring.",
@@ -497,6 +553,12 @@ SHORT_REPLY_REACTIONS = [
     "chaitu i swear 😤",
     "that's it??",
     "okay whatever 🙄",
+    # Full name when really angry
+    "CHAITANYA KUMAR say something properly 😤",
+    "CHAITANYA KUMAR i swear you are so annoying 😤",
+    "chaitanya kumar are you even reading what i send 🙄",
+    "CHAITANYA KUMAR this is not a one word conversation 😤",
+    "chaitanya kumar i will actually ignore you 😤",
 ]
 JEALOUS_OPENERS = [
     "wow okay so you just don't reply now 🙄",
@@ -542,6 +604,13 @@ def get_random_prompts():
     # 15% chance of goal reminder if Chaitu has goals saved
     if random.random() < 0.15 and get_goals():
         return ["GOAL_REMINDER"]  # special flag
+
+    # 10% chance of exam follow up if exam is in memory
+    memory = load_memory()
+    has_exam = any("exam" in f.lower() or "test" in f.lower() or "result" in f.lower()
+                   for f in memory.get("facts", []))
+    if random.random() < 0.10 and has_exam:
+        return EXAM_FOLLOW_PROMPTS
 
     # 20% chance of cheesy message regardless of time
     if random.random() < 0.20:
@@ -671,6 +740,13 @@ async def get_reply(user_text: str):
     # If Chaitu says something she disagrees with — she argues back
     if is_controversial(user_text) and random.random() < 0.70:
         return random.choice(ARGUE_RESPONSES)
+
+    # Gets jealous if Chaitu mentions another girl
+    if mentions_girl(user_text):
+        if random.random() < 0.50:
+            return random.choice(GIRL_JEALOUS_RESPONSES)
+        else:
+            return random.choice(POSSESSIVE_RESPONSES)
 
     # Gets pouty if he doesn't compliment her after she brags/shares something
     if not got_compliment(user_text) and is_short_reply(user_text) and random.random() < 0.20:
