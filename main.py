@@ -956,10 +956,13 @@ async def run_bot():
 
                     reply = await get_reply(user_text)
                     if not reply:
-                        # Left on read — no response
                         return
 
-                    await event.reply(reply)
+                    if reply == "SEND_PHOTO":
+                        await send_photo(client, YOUR_USERNAME, naughty=True)
+                    else:
+                        await event.reply(reply)
+
                     global last_shreya_msg_time, seen_zone_reacted, no_reply_reacted
                     last_shreya_msg_time = datetime.now(IST)
                     seen_zone_reacted = False
