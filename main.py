@@ -381,6 +381,29 @@ SLEEP_MSGS = [
     "i'm so tired i'm knocking out bye chaitu ❤️😭",
 ]
 
+SEEN_ZONE_MSGS = [
+    "chaitu did you just seen zone me 🙂❤️",
+    "wow okay seen zone it is, cute 🙃",
+    "chaitu i see you read that and no reply, interesting 🙂",
+    "noted. seen zone. you're lucky i like you 🙄❤️",
+    "chaitu hello?? i know you saw that 😏",
+    "okay so we're ignoring me now, got it 🙂 come back when you miss me",
+    "chaitu seen zone really 😤 you owe me after this",
+]
+
+NO_REPLY_MSGS = [
+    "chaitu where did you disappear 🙄❤️",
+    "hello?? did you forget i exist 😏",
+    "chaitu i'm literally right here waiting 🙄",
+    "okay so you just vanish like that, okay 🙂",
+    "chaitu come back i miss you and i'm slightly annoyed 😤❤️",
+    "ngl you disappearing makes me want your attention more 😒❤️",
+    "chaitu if you don't reply i'll assume you're thinking about me 😏",
+    "okay fine take your time but i'm not happy about it 🙄💕",
+    "chaitu you better have a good reason for this 😤",
+    "missing you but also kind of mad at you rn 🙄❤️",
+]
+
 # Track if she said goodnight and is waiting for reply
 waiting_for_goodnight_reply = False
 last_compliment_time = None
@@ -899,6 +922,10 @@ async def run_bot():
                         return
 
                     await event.reply(reply)
+                    global last_shreya_msg_time, seen_zone_reacted, no_reply_reacted
+                    last_shreya_msg_time = datetime.now(IST)
+                    seen_zone_reacted = False
+                    no_reply_reacted = False
                     logger.info(f"Replied: {reply[:80]}")
 
                     # 20% double text
@@ -1033,6 +1060,50 @@ async def run_bot():
                 except Exception as e:
                     logger.error(f"Deep q error: {e}")
 
+            async def check_seen_zone():
+                global seen_zone_reacted, last_shreya_msg_time, last_reply_time
+                try:
+                    if seen_zone_reacted or last_shreya_msg_time is None:
+                        return
+                    now = datetime.now(IST)
+                    # If Chaitu hasn't replied 20+ mins after she sent something
+                    if last_reply_time and last_reply_time > last_shreya_msg_time:
+                        return  # he replied so no issue
+                    if (now - last_shreya_msg_time).total_seconds() > 1200:
+                        seen_zone_reacted = True
+                        msg = random.choice(SEEN_ZONE_MSGS)
+                        async with client.action(YOUR_USERNAME, "typing"):
+                            await asyncio.sleep(random.uniform(2, 5))
+                        await client.send_message(YOUR_USERNAME, msg)
+                        last_shreya_msg_time = datetime.now(IST)
+                        logger.info(f"Seen zone: {msg}")
+                except Exception as e:
+                    logger.error(f"Seen zone error: {e}")
+
+            async def check_no_reply():
+                global no_reply_reacted, last_shreya_msg_time, last_reply_time
+                try:
+                    if no_reply_reacted:
+                        return
+                    now = datetime.now(IST)
+                    if not (9 <= now.hour <= 23):
+                        return
+                    # If Chaitu hasn't texted in 45+ mins and she last texted a while ago
+                    if last_reply_time is None:
+                        elapsed = float('inf')
+                    else:
+                        elapsed = (now - last_reply_time).total_seconds()
+                    if elapsed > 2700:  # 45 minutes no reply from Chaitu
+                        no_reply_reacted = True
+                        msg = random.choice(NO_REPLY_MSGS)
+                        async with client.action(YOUR_USERNAME, "typing"):
+                            await asyncio.sleep(random.uniform(3, 7))
+                        await client.send_message(YOUR_USERNAME, msg)
+                        last_shreya_msg_time = datetime.now(IST)
+                        logger.info(f"No reply nudge: {msg}")
+                except Exception as e:
+                    logger.error(f"No reply error: {e}")
+
             scheduler = AsyncIOScheduler(timezone=IST)
 
             def schedule_random():
@@ -1058,7 +1129,9 @@ async def run_bot():
                 scheduler.add_job(send_meal_check,       "cron",     hour=8,  minute=30,                   id="breakfast")
                 scheduler.add_job(send_meal_check,       "cron",     hour=13, minute=0,                    id="lunch")
                 scheduler.add_job(send_meal_check,       "cron",     hour=20, minute=0,                    id="dinner")
-                scheduler.add_job(check_busy_followup,  "interval", minutes=5,                             id="followup")
+                scheduler.add_job(check_busy_followup,  "interval", minutes=5,   id="followup")
+                scheduler.add_job(check_seen_zone,      "interval", minutes=20,  id="seen_zone")
+                scheduler.add_job(check_no_reply,       "interval", minutes=15,  id="no_reply")
                 scheduler.start()
                 logger.info("Scheduler running ✅")
 
