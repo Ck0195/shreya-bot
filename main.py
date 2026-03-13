@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 API_ID         = int(os.environ.get("API_ID", "0"))
 API_HASH       = os.environ.get("API_HASH")
-GROQ_API_KEY   = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY      = os.environ.get("GROQ_API_KEY")
+ELEVENLABS_KEY    = os.environ.get("ELEVENLABS_KEY")
+ELEVENLABS_VOICE  = "Rachel"  # natural female voice — change if you want
 YOUR_USERNAME  = os.environ.get("YOUR_USERNAME")
 SESSION_STRING = os.environ.get("SESSION_STRING")
 IST            = pytz.timezone("Asia/Kolkata")
@@ -964,6 +966,78 @@ async def send_reaction(client, event):
     except Exception as e:
         logger.error(f"Reaction error: {e}")
 
+# ── Voice notes ──────────────────────────────────────────────────────────────
+VOICE_TEXTS = [
+    "chaitu i miss you so much right now",
+    "hi chaitu just thinking about you",
+    "chaitu where are you i'm bored",
+    "okay i just wanted to hear your voice, text me back",
+    "chaitu stop ignoring me please",
+    "i was thinking about you and had to say something",
+    "chaitu you're my favourite person you know that right",
+    "hi baby just checking on you",
+    "chaitu i'm so tired today but i still wanted to talk to you",
+    "ngl i really miss you right now",
+]
+
+VOICE_ANGRY_TEXTS = [
+    "chaitu i cannot believe you just seen zoned me",
+    "chaitu seriously where are you, reply to me",
+    "okay i'm actually annoyed right now, text me back",
+    "chaitu you better have a good explanation for this",
+]
+
+VOICE_NIGHT_TEXTS = [
+    "chaitu goodnight, i miss you already",
+    "i was about to sleep but i just wanted to say i love you",
+    "chaitu i can't sleep, are you still up",
+    "goodnight chaitu, dream of me okay",
+]
+
+async def send_voice_note(client, username, text=None, mood="normal"):
+    if not ELEVENLABS_KEY:
+        return False
+    try:
+        if not text:
+            if mood == "angry":
+                text = random.choice(VOICE_ANGRY_TEXTS)
+            elif mood == "night":
+                text = random.choice(VOICE_NIGHT_TEXTS)
+            else:
+                text = random.choice(VOICE_TEXTS)
+
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"  # Rachel voice
+        headers = {
+            "xi-api-key": ELEVENLABS_KEY,
+            "Content-Type": "application/json"
+        }
+        body = {
+            "text": text,
+            "model_id": "eleven_monolingual_v1",
+            "voice_settings": {"stability": 0.4, "similarity_boost": 0.8}
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=body, headers=headers) as resp:
+                if resp.status == 200:
+                    audio_data = await resp.read()
+                    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                        f.write(audio_data)
+                        tmp_path = f.name
+                    await client.send_file(
+                        username,
+                        tmp_path,
+                        voice_note=True
+                    )
+                    os.remove(tmp_path)
+                    logger.info(f"Voice note sent: {text[:50]}")
+                    return True
+                else:
+                    logger.error(f"ElevenLabs error: {resp.status}")
+    except Exception as e:
+        logger.error(f"Voice note error: {e}")
+    return False
+
 # ── Bot ───────────────────────────────────────────────────────────────────────
 async def run_bot():
     global last_reply_time, is_currently_busy, busy_free_at, busy_reason
@@ -998,7 +1072,10 @@ async def run_bot():
                     logger.info(f"Waiting {read_delay:.0f}s")
                     await asyncio.sleep(read_delay)
 
-                    # 8% chance photo instead of text
+                    # 15% voice note, 8% photo, rest text
+                    if ELEVENLABS_KEY and random.random() < 0.15:
+                        await send_voice_note(client, YOUR_USERNAME)
+                        return
                     if random.random() < 0.08:
                         await send_photo(client, YOUR_USERNAME)
                         return
@@ -1065,6 +1142,10 @@ async def run_bot():
 
             async def send_random_message():
                 try:
+                    # 10% voice note, 12% photo, rest text
+                    if ELEVENLABS_KEY and random.random() < 0.10:
+                        await send_voice_note(client, YOUR_USERNAME)
+                        return
                     if random.random() < 0.12:
                         await send_photo(client, YOUR_USERNAME)
                         return
@@ -1125,8 +1206,12 @@ async def run_bot():
                 try:
                     reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. About to sleep. Max 1 sentence with emojis."}])
                     if reply:
-                        # 60% chance send a photo with good night
-                        if random.random() < 0.60:
+                        r = random.random()
+                        if ELEVENLABS_KEY and r < 0.30:
+                            # 30% voice note for good night
+                            await send_voice_note(client, YOUR_USERNAME, mood="night")
+                        elif r < 0.60:
+                            # 30% photo
                             await send_photo(client, YOUR_USERNAME)
                             await asyncio.sleep(random.uniform(1, 3))
                         await client.send_message(YOUR_USERNAME, reply)
@@ -1180,10 +1265,14 @@ async def run_bot():
                         return  # he replied so no issue
                     if (now - last_shreya_msg_time).total_seconds() > 2400:  # 40 mins
                         seen_zone_reacted = True
-                        msg = random.choice(SEEN_ZONE_MSGS)
-                        async with client.action(YOUR_USERNAME, "typing"):
-                            await asyncio.sleep(random.uniform(2, 5))
-                        await client.send_message(YOUR_USERNAME, msg)
+                        # 25% chance angry voice note instead of text
+                        if ELEVENLABS_KEY and random.random() < 0.25:
+                            await send_voice_note(client, YOUR_USERNAME, mood="angry")
+                        else:
+                            msg = random.choice(SEEN_ZONE_MSGS)
+                            async with client.action(YOUR_USERNAME, "typing"):
+                                await asyncio.sleep(random.uniform(2, 5))
+                            await client.send_message(YOUR_USERNAME, msg)
                         last_shreya_msg_time = datetime.now(IST)
                         logger.info(f"Seen zone: {msg}")
                 except Exception as e:
