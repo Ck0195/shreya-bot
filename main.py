@@ -412,9 +412,6 @@ last_compliment_time = None
 SHREYA_PHOTOS = ['https://files.catbox.moe/6dgbm1.jpg', 'https://files.catbox.moe/dbllh9.jpg', 'https://files.catbox.moe/ua5rml.jpg', 'https://files.catbox.moe/veevdh.jpg', 'https://files.catbox.moe/vq3iya.jpg', 'https://files.catbox.moe/ai2lrh.jpg', 'https://files.catbox.moe/xycmsl.jpg', 'https://files.catbox.moe/klqres.jpg', 'https://files.catbox.moe/9voop4.jpg', 'https://files.catbox.moe/vrtkye.jpg', 'https://files.catbox.moe/jg1mk7.jpg', 'https://files.catbox.moe/5mcorp.jpg', 'https://files.catbox.moe/lip4uq.jpg', 'https://files.catbox.moe/u8ho6z.jpg', 'https://files.catbox.moe/n9vigk.jpg', 'https://files.catbox.moe/maoomv.jpg', 'https://files.catbox.moe/3gmcf9.jpg', 'https://files.catbox.moe/c2qhff.jpg', 'https://files.catbox.moe/pcqc2b.jpg', 'https://files.catbox.moe/vjvcjx.jpg', 'https://files.catbox.moe/c1p331.jpg', 'https://files.catbox.moe/k3ufpu.jpg', 'https://files.catbox.moe/02oy46.jpg', 'https://files.catbox.moe/fpdpwf.jpg', 'https://files.catbox.moe/r8j688.jpg', 'https://files.catbox.moe/qvpp0z.jpg', 'https://files.catbox.moe/gotcqn.jpg', 'https://files.catbox.moe/pon7g8.jpg', 'https://files.catbox.moe/iob625.jpg', 'https://files.catbox.moe/rnxbug.jpg', 'https://files.catbox.moe/mmso5w.jpg', 'https://files.catbox.moe/afdsf4.jpg', 'https://files.catbox.moe/spbd9t.jpg', 'https://files.catbox.moe/9n0t8m.jpg', 'https://files.catbox.moe/id3qnl.jpg', 'https://files.catbox.moe/ir57pj.jpg', 'https://files.catbox.moe/c12c8n.jpg', 'https://files.catbox.moe/q5qnwn.jpg', 'https://files.catbox.moe/do27xz.jpg', 'https://files.catbox.moe/h9c23s.jpg', 'https://files.catbox.moe/jrsuzu.jpg', 'https://files.catbox.moe/e1xjdn.jpg', 'https://files.catbox.moe/w256ca.jpg', 'https://files.catbox.moe/s6z063.jpg', 'https://files.catbox.moe/otobbj.jpg', 'https://files.catbox.moe/od8ej2.jpg', 'https://files.catbox.moe/a53a1y.jpg', 'https://files.catbox.moe/tybgc2.jpg', 'https://files.catbox.moe/bp47yc.jpg', 'https://files.catbox.moe/da1qpr.jpg', 'https://files.catbox.moe/c4yppv.jpg', 'https://files.catbox.moe/68ep17.jpg', 'https://files.catbox.moe/7b7i0m.jpg', 'https://files.catbox.moe/usbwka.jpg', 'https://files.catbox.moe/hrzo6i.jpg', 'https://files.catbox.moe/67hzwo.jpg', 'https://files.catbox.moe/gkdyy9.jpg', 'https://files.catbox.moe/uh0otz.jpg', 'https://files.catbox.moe/h802gd.jpg', 'https://files.catbox.moe/iantt9.jpg', 'https://files.catbox.moe/visoa7.jpg', 'https://files.catbox.moe/q5b20e.jpg', 'https://files.catbox.moe/3knsmn.jpg', 'https://files.catbox.moe/re2o8t.jpg', 'https://files.catbox.moe/6iuvso.jpg', 'https://files.catbox.moe/sljjfw.jpg', 'https://files.catbox.moe/zxx1nn.jpg', 'https://files.catbox.moe/eqt1h2.jpg', 'https://files.catbox.moe/w6qyih.jpg', 'https://files.catbox.moe/wvobfx.jpg', 'https://files.catbox.moe/7grg0j.jpg', 'https://files.catbox.moe/567alp.jpg', 'https://files.catbox.moe/h5kvw7.jpg', 'https://files.catbox.moe/5jcpji.jpg', 'https://files.catbox.moe/9wkz1k.jpg', 'https://files.catbox.moe/knwjy7.jpg', 'https://files.catbox.moe/lq5rne.jpg', 'https://files.catbox.moe/tqjhl4.jpg', 'https://files.catbox.moe/ddlc2j.jpg', 'https://files.catbox.moe/y3k7h9.jpg', 'https://files.catbox.moe/k71g51.jpg', 'https://files.catbox.moe/8yiq77.jpg', 'https://files.catbox.moe/qn4pll.jpg', 'https://files.catbox.moe/u2qw0h.jpg', 'https://files.catbox.moe/roervs.jpg', 'https://files.catbox.moe/vwl50h.jpg', 'https://files.catbox.moe/tcx6w7.jpg', 'https://files.catbox.moe/in59ya.jpg', 'https://files.catbox.moe/qoxcw9.jpg', 'https://files.catbox.moe/uzf5pa.jpg', 'https://files.catbox.moe/71hrqt.jpg', 'https://files.catbox.moe/gx62py.jpg', 'https://files.catbox.moe/dpw2s8.jpg', 'https://files.catbox.moe/ytxspw.jpg', 'https://files.catbox.moe/523pae.jpg', 'https://files.catbox.moe/f104r8.jpg', 'https://files.catbox.moe/fokn34.jpg', 'https://files.catbox.moe/4342tt.jpg', 'https://files.catbox.moe/xa7imp.jpg', 'https://files.catbox.moe/gz2ae0.jpg', 'https://files.catbox.moe/87scpt.jpg', 'https://files.catbox.moe/3imnhw.jpg', 'https://files.catbox.moe/zkji2t.jpg', 'https://files.catbox.moe/mgz0mg.jpg', 'https://files.catbox.moe/4lr15y.jpg', 'https://files.catbox.moe/7lvk56.jpg', 'https://files.catbox.moe/yo5qxl.jpg', 'https://files.catbox.moe/6a2mir.jpg', 'https://files.catbox.moe/0n5jur.jpg', 'https://files.catbox.moe/htz2k7.jpg', 'https://files.catbox.moe/qtnq24.jpg', 'https://files.catbox.moe/hek5i6.jpg', 'https://files.catbox.moe/sp909m.jpg', 'https://files.catbox.moe/148xld.jpg', 'https://files.catbox.moe/mvi9xl.jpg', 'https://files.catbox.moe/fuwqat.jpg', 'https://files.catbox.moe/n072a6.jpg', 'https://files.catbox.moe/zmz0cv.jpg', 'https://files.catbox.moe/glwpjc.jpg', 'https://files.catbox.moe/kfsrs6.jpg', 'https://files.catbox.moe/prm7bo.jpg', 'https://files.catbox.moe/p5pdyk.jpg', 'https://files.catbox.moe/g86ggf.jpg', 'https://files.catbox.moe/y5dub4.jpg', 'https://files.catbox.moe/wck5k5.jpg', 'https://files.catbox.moe/0qyac3.jpg', 'https://files.catbox.moe/0l34nx.jpg', 'https://files.catbox.moe/gdplfa.jpg', 'https://files.catbox.moe/nxpze5.jpg', 'https://files.catbox.moe/uxo2k9.jpg', 'https://files.catbox.moe/bdiwfk.jpg', 'https://files.catbox.moe/2k2ebh.jpg', 'https://files.catbox.moe/emaqqq.jpg', 'https://files.catbox.moe/fsj5m5.jpg', 'https://files.catbox.moe/yd77mv.jpg', 'https://files.catbox.moe/69sz6a.jpg', 'https://files.catbox.moe/2t7nc7.jpg', 'https://files.catbox.moe/n3xz5z.jpg', 'https://files.catbox.moe/kdbxq6.jpg', 'https://files.catbox.moe/etpi39.jpg', 'https://files.catbox.moe/9zf3sh.jpg', 'https://files.catbox.moe/dawfwh.jpg', 'https://files.catbox.moe/zzhva0.jpg', 'https://files.catbox.moe/u1654b.jpg', 'https://files.catbox.moe/cf12rv.jpg', 'https://files.catbox.moe/2hfyg0.jpg', 'https://files.catbox.moe/he0rya.jpg', 'https://files.catbox.moe/yxpeae.jpg', 'https://files.catbox.moe/y2p4lh.jpg', 'https://files.catbox.moe/nsk0mk.jpg', 'https://files.catbox.moe/25uefm.jpg', 'https://files.catbox.moe/qw1pzm.jpg', 'https://files.catbox.moe/vufkbt.jpg', 'https://files.catbox.moe/st58bb.jpg', 'https://files.catbox.moe/mhrr71.jpg', 'https://files.catbox.moe/4xx5jq.jpg', 'https://files.catbox.moe/v0oq1v.jpg', 'https://files.catbox.moe/ekpups.jpg', 'https://files.catbox.moe/in0vfc.jpg', 'https://files.catbox.moe/xaph17.jpg', 'https://files.catbox.moe/irc2l4.jpg', 'https://files.catbox.moe/nn6md7.jpg', 'https://files.catbox.moe/f5c4qy.jpg', 'https://files.catbox.moe/k2ha74.jpg', 'https://files.catbox.moe/flvlbl.jpg', 'https://files.catbox.moe/h3tmoz.jpg', 'https://files.catbox.moe/hhb96h.jpg', 'https://files.catbox.moe/xq5i0c.jpg', 'https://files.catbox.moe/1v4vk8.jpg', 'https://files.catbox.moe/0ufudi.jpg', 'https://files.catbox.moe/8vwi97.jpg', 'https://files.catbox.moe/jrggpi.jpg']
 
 PHOTO_CAPTIONS = [
-    "look at this 😭",
-    "chaitu look 😍",
-    "okay but 🥺",
     "hii 🤭",
     "missing you",
     "🥺",
@@ -422,6 +419,24 @@ PHOTO_CAPTIONS = [
     "chaitu 😍",
     "don't i look good 😏",
     "okay bye 😭",
+    "look at me 🤭",
+    "chaitu look 😍",
+    "thinking of you 🥺",
+]
+
+NAUGHTY_CAPTIONS = [
+    "yours 🤭❤️",
+    "only for you to see 😏",
+    "don't get too distracted chaitu 😏",
+    "you better say something nice 😏",
+    "miss me? 😏",
+    "all yours chaitu 🤭",
+    "eyes up here chaitu 😏😂",
+    "bet you can't stop looking 🤭",
+    "this is what you're missing 😏❤️",
+    "chaitu 🤭 focus",
+    "not sorry 😏",
+    "saved only for you 🤭❤️",
 ]
 REACTIONS = ["❤️", "🔥", "😂", "🥺", "👍", "😍", "💀", "🤭"]
 
@@ -749,6 +764,13 @@ async def get_reply(user_text: str):
         short_reply_count = 0
         return "yes my baby 🥺❤️"
 
+    # If Chaitu asks how she looks — flag to send photo
+    looks_keywords = ["how do you look", "how you look", "send pic", "send photo",
+                      "photo", "pic", "picture", "show me", "selfie", "looking good",
+                      "how are you looking", "what are you wearing"]
+    if any(k in user_text.lower() for k in looks_keywords):
+        return "SEND_PHOTO"
+
     # If Chaitu seems sad — she gets extra sweet immediately
     if seems_sad(user_text) and random.random() < 0.75:
         return random.choice(SAD_RESPONSES)
@@ -856,10 +878,14 @@ async def get_random_message(nudge=False, meal=None):
     return await call_groq([{"role": "user", "content": prompt}])
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-async def send_photo(client, username):
+async def send_photo(client, username, naughty=False):
     try:
         url = random.choice(SHREYA_PHOTOS)
-        caption = random.choice(PHOTO_CAPTIONS)
+        if naughty:
+            caption = random.choice(NAUGHTY_CAPTIONS)
+        else:
+            # 30% chance naughty caption even on normal sends
+            caption = random.choice(NAUGHTY_CAPTIONS if random.random() < 0.30 else PHOTO_CAPTIONS)
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 if resp.status == 200:
@@ -969,9 +995,17 @@ async def run_bot():
                         if reason and reason in FOLLOWUP_TEMPLATES and FOLLOWUP_TEMPLATES[reason]:
                             msg = random.choice(FOLLOWUP_TEMPLATES[reason])
                             await asyncio.sleep(random.uniform(2, 5))
-                            async with client.action(YOUR_USERNAME, "typing"):
-                                await asyncio.sleep(random.uniform(1, 3))
-                            await client.send_message(YOUR_USERNAME, msg)
+                            # Send photo after practice or shoot
+                            if reason in ["dance practice", "navaratan shoot"] and random.random() < 0.70:
+                                await client.send_file(
+                                    YOUR_USERNAME,
+                                    random.choice(SHREYA_PHOTOS),
+                                    caption=msg
+                                )
+                            else:
+                                async with client.action(YOUR_USERNAME, "typing"):
+                                    await asyncio.sleep(random.uniform(1, 3))
+                                await client.send_message(YOUR_USERNAME, msg)
                             logger.info(f"Followup after {reason}: {msg}")
 
             async def send_random_message():
@@ -1024,6 +1058,10 @@ async def run_bot():
                 try:
                     reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good morning text. Just woke up. Max 1 sentence with emojis."}])
                     if reply:
+                        # 60% chance send a photo with good morning
+                        if random.random() < 0.60:
+                            await send_photo(client, YOUR_USERNAME)
+                            await asyncio.sleep(random.uniform(1, 3))
                         await client.send_message(YOUR_USERNAME, reply)
                 except Exception as e:
                     logger.error(f"Morning error: {e}")
@@ -1032,6 +1070,10 @@ async def run_bot():
                 try:
                     reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. About to sleep. Max 1 sentence with emojis."}])
                     if reply:
+                        # 60% chance send a photo with good night
+                        if random.random() < 0.60:
+                            await send_photo(client, YOUR_USERNAME)
+                            await asyncio.sleep(random.uniform(1, 3))
                         await client.send_message(YOUR_USERNAME, reply)
                 except Exception as e:
                     logger.error(f"Night error: {e}")
