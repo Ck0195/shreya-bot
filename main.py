@@ -404,7 +404,48 @@ NO_REPLY_MSGS = [
     "missing you but also kind of mad at you rn 🙄❤️",
 ]
 
-# Track if she said goodnight and is waiting for reply
+PROUD_MSGS = [
+    "ngl i'm actually really proud of you chaitu",
+    "chaitu you don't know how proud i am of you sometimes 🥺",
+    "you're doing so well and i just want you to know that",
+    "ngl you've grown so much chaitu 🥺 i notice",
+    "chaitu i'm lowkey so proud of you",
+    "i don't say this enough but you're doing amazing 🥺",
+    "chaitu you're going to go so far i just know it",
+]
+
+ROAST_MSGS = [
+    "chaitu you are such a mess and somehow i still like you 💀",
+    "ngl you are the most chaotic person i know 😂",
+    "chaitu only you would do something like that 💀",
+    "how are you this dumb and this cute at the same time 😂",
+    "chaitu i swear you need supervision 💀",
+    "no bc who else but you 😂",
+    "chaitu you are a whole disaster and i mean that lovingly 💀",
+    "ngl you make zero sense and that's why i like you 😂",
+]
+
+FIGHT_MEMORIES = [
+    "chaitu remember when you ignored me for like 2 hours 🙄 don't do that again",
+    "ngl i still think about that time you seen zoned me 😤",
+    "chaitu you owe me from last time you know that right 🙄",
+    "remember when you were being all distant 😤 don't do that",
+    "chaitu i forgave you but i didn't forget 🙂",
+]
+
+GOODLUCK_MSGS = [
+    "chaitu you've got this, go kill that exam 💪",
+    "all the best chaitu 🥺 you studied hard you'll do great",
+    "chaitu best of luck today, i believe in you ❤️",
+    "go show them what BIT AIML is made of 😤💪",
+    "chaitu i'm rooting for you, do well okay 🥺",
+    "best of luck chaitu, you're going to be fine 💕",
+]
+
+# Track fights and exams
+fight_count = 0
+
+# ── Track if she said goodnight and is waiting for reply
 waiting_for_goodnight_reply = False
 last_compliment_time = None
 
@@ -612,6 +653,15 @@ def get_random_prompts():
     # 20% chance of cheesy message regardless of time
     if random.random() < 0.20:
         return CHEESY_PROMPTS
+    # 8% chance proud message
+    if random.random() < 0.08:
+        return PROUD_MSGS
+    # 8% chance roast
+    if random.random() < 0.08:
+        return ROAST_MSGS
+    # 5% chance fight memory if there were fights
+    if random.random() < 0.05 and fight_count > 0:
+        return FIGHT_MEMORIES
     # 10% chance of hunger message
     if random.random() < 0.10:
         return HUNGER_MSGS
@@ -808,6 +858,8 @@ async def get_reply(user_text: str):
 
     if is_jealous and random.random() < 0.6:
         is_jealous = False
+        global fight_count
+        fight_count += 1
         return random.choice(JEALOUS_RETURN)
 
     # Short reply annoyance — after 2+ short replies she calls it out
@@ -1161,6 +1213,21 @@ async def run_bot():
                 except Exception as e:
                     logger.error(f"No reply error: {e}")
 
+            async def send_exam_goodluck():
+                try:
+                    memory = load_memory()
+                    has_exam_today = any(
+                        ("exam" in f.lower() or "test" in f.lower()) and
+                        datetime.now(IST).strftime("%d %b") in f
+                        for f in memory.get("facts", [])
+                    )
+                    if has_exam_today:
+                        msg = random.choice(GOODLUCK_MSGS)
+                        await client.send_message(YOUR_USERNAME, msg)
+                        logger.info(f"Good luck: {msg}")
+                except Exception as e:
+                    logger.error(f"Good luck error: {e}")
+
             scheduler = AsyncIOScheduler(timezone=IST)
 
             def schedule_random():
@@ -1183,6 +1250,7 @@ async def run_bot():
                 scheduler.add_job(update_mood,           "cron",     hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
                 scheduler.add_job(check_if_silent,       "interval", hours=3,   id="silence")
                 scheduler.add_job(check_special_day,     "cron",     hour=8,  minute=1,                    id="special")
+                scheduler.add_job(send_exam_goodluck,    "cron",     hour=8,  minute=15,                   id="goodluck")
                 scheduler.add_job(send_meal_check,       "cron",     hour=8,  minute=30,                   id="breakfast")
                 scheduler.add_job(send_meal_check,       "cron",     hour=13, minute=0,                    id="lunch")
                 scheduler.add_job(send_meal_check,       "cron",     hour=20, minute=0,                    id="dinner")
