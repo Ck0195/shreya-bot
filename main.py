@@ -1069,7 +1069,7 @@ async def run_bot():
                     # If Chaitu hasn't replied 20+ mins after she sent something
                     if last_reply_time and last_reply_time > last_shreya_msg_time:
                         return  # he replied so no issue
-                    if (now - last_shreya_msg_time).total_seconds() > 1200:
+                    if (now - last_shreya_msg_time).total_seconds() > 2400:  # 40 mins
                         seen_zone_reacted = True
                         msg = random.choice(SEEN_ZONE_MSGS)
                         async with client.action(YOUR_USERNAME, "typing"):
@@ -1093,7 +1093,7 @@ async def run_bot():
                         elapsed = float('inf')
                     else:
                         elapsed = (now - last_reply_time).total_seconds()
-                    if elapsed > 2700:  # 45 minutes no reply from Chaitu
+                    if elapsed > 5400:  # 90 mins no reply from Chaitu
                         no_reply_reacted = True
                         msg = random.choice(NO_REPLY_MSGS)
                         async with client.action(YOUR_USERNAME, "typing"):
@@ -1111,7 +1111,7 @@ async def run_bot():
                     if job.id.startswith("rand_"):
                         job.remove()
                 # 30+ messages spread across 8am to 11pm
-                all_minutes = random.sample(range(480, 1380), 32)
+                all_minutes = random.sample(range(480, 1380), 15)
                 for total_minute in all_minutes:
                     h, m = total_minute // 60, total_minute % 60
                     scheduler.add_job(send_random_message, "cron", hour=h, minute=m, id=f"rand_{h}_{m}")
@@ -1124,14 +1124,14 @@ async def run_bot():
                 scheduler.add_job(send_good_night,       "cron",     hour=23, minute=0,                    id="night")
                 scheduler.add_job(send_sleep_message,    "cron",     hour=22, minute=30,                 id="sleep_msg")
                 scheduler.add_job(update_mood,           "cron",     hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
-                scheduler.add_job(check_if_silent,       "interval", hours=2,                              id="silence")
+                scheduler.add_job(check_if_silent,       "interval", hours=3,   id="silence")
                 scheduler.add_job(check_special_day,     "cron",     hour=8,  minute=1,                    id="special")
                 scheduler.add_job(send_meal_check,       "cron",     hour=8,  minute=30,                   id="breakfast")
                 scheduler.add_job(send_meal_check,       "cron",     hour=13, minute=0,                    id="lunch")
                 scheduler.add_job(send_meal_check,       "cron",     hour=20, minute=0,                    id="dinner")
                 scheduler.add_job(check_busy_followup,  "interval", minutes=5,   id="followup")
-                scheduler.add_job(check_seen_zone,      "interval", minutes=20,  id="seen_zone")
-                scheduler.add_job(check_no_reply,       "interval", minutes=15,  id="no_reply")
+                scheduler.add_job(check_seen_zone,      "interval", minutes=40,  id="seen_zone")
+                scheduler.add_job(check_no_reply,       "interval", minutes=60,  id="no_reply")
                 scheduler.start()
                 logger.info("Scheduler running ✅")
 
