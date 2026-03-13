@@ -697,26 +697,41 @@ async def get_reply(user_text: str):
             else:
                 return random.choice(MOTIVATION_MSGS)
 
-    if wants_to_talk(user_text) and is_currently_busy:
-        is_currently_busy = False
-        busy_free_at = None
-        busy_reason = None
+    global busy_spam_count
 
     if is_currently_busy:
         now = datetime.now(IST)
         if busy_free_at and now < busy_free_at:
-            still_busy_msgs = [
-                "still not done chaitu, miss me? 😘",
-                "not yet, i'll be back soon 🥺",
-                "still busy, think about me 😏",
-                "almost done, don't go anywhere ❤️",
-                "give me a bit more, i'm all yours after 💕",
-            ]
-            return random.choice(still_busy_msgs)
+            busy_spam_count += 1
+            # Only reply if spammed 3+ times
+            if busy_spam_count < 3:
+                logger.info(f"Busy — ignoring message {busy_spam_count}/3")
+                return None
+            else:
+                # Reset counter and send a cheesy busy reply
+                busy_spam_count = 0
+                still_busy_msgs = [
+                    "chaitu i said i'm busy 😭 but okay i miss you too 🥺",
+                    "omg chaitu i'm literally in the middle of something 😤 you're so needy and i love it 😘",
+                    "chaitu stop texting i can't focus when you do this 😭❤️",
+                    "okay okay i see you spamming me 🙄 i'll be back soon i promise 💕",
+                    "chaitu i'm bUsY but also you're cute for missing me 😏",
+                    "stop it 😭 i'm coming back just wait for me ❤️",
+                    "chaitu you're making it really hard to focus rn 😤💕",
+                ]
+                return random.choice(still_busy_msgs)
         else:
             is_currently_busy = False
             busy_free_at = None
             busy_reason = None
+            busy_spam_count = 0
+
+    # Cancel busy only if he really needs her
+    if wants_to_talk(user_text) and is_currently_busy:
+        is_currently_busy = False
+        busy_free_at = None
+        busy_reason = None
+        busy_spam_count = 0
 
     if is_busy_hours() and random.random() < 0.12:
         scenario, mins, reason = random.choice(BUSY_SCENARIOS_DAY)
@@ -1159,3 +1174,4 @@ async def start():
 
 if __name__ == "__main__":
     asyncio.run(start())
+    
