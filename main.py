@@ -733,14 +733,14 @@ async def get_reply(user_text: str):
         busy_reason = None
         busy_spam_count = 0
 
-    if is_busy_hours() and random.random() < 0.12:
+    if is_busy_hours() and random.random() < 0.05:
         scenario, mins, reason = random.choice(BUSY_SCENARIOS_DAY)
         is_currently_busy = True
         busy_free_at = datetime.now(IST) + timedelta(minutes=mins)
         busy_reason = reason
         return scenario
 
-    if not is_busy_hours() and random.random() < 0.05:
+    if not is_busy_hours() and random.random() < 0.02:
         scenario, mins, reason = random.choice(BUSY_SCENARIOS_ANYTIME)
         is_currently_busy = True
         busy_free_at = datetime.now(IST) + timedelta(minutes=mins)
@@ -1174,4 +1174,3 @@ async def start():
 
 if __name__ == "__main__":
     asyncio.run(start())
-    
