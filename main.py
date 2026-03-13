@@ -537,17 +537,17 @@ JEALOUS_RETURN = [
     "fine fine i was just annoyed 🥺",
 ]
 BUSY_SCENARIOS_DAY = [
-    ("in class rn chaitu, text you after 🙄", 60, "class"),
-    ("omg in the middle of practice, give me an hour 😩", 60, "dance practice"),
-    ("assignment due today, talk later 💕", 45, "assignment"),
-    ("prof is staring lol, text you after class 😭", 50, "class"),
-    ("shoot is going on, text you when done ✨", 90, "navaratan shoot"),
-    ("brb group meeting 😩", 30, "group meeting"),
+    ("in class rn, miss me 😘", 60, "class"),
+    ("in the middle of practice, think about me 🙄❤️", 60, "dance practice"),
+    ("assignment due today, i'll be back before you miss me too much 💕", 45, "assignment"),
+    ("can't talk rn, save all your texts for when i'm back 😘", 50, "class"),
+    ("shoot going on, don't go anywhere 🫶", 90, "navaratan shoot"),
+    ("group meeting, be good while i'm gone 😏", 30, "group meeting"),
 ]
 BUSY_SCENARIOS_ANYTIME = [
-    ("mama called, brb 🥺", 15, "mama call"),
-    ("give me 10 mins chaitu 🥺", 10, "something"),
-    ("busy for a bit, talk soon 🥺", 20, "something"),
+    ("mama called, don't miss me too much 😘", 15, "mama call"),
+    ("give me a few mins, i'll be back only for you 🥺", 10, "something"),
+    ("busy for a bit, think about me while i'm gone 😏", 20, "something"),
 ]
 
 # Followup messages after she comes back from something
@@ -682,8 +682,14 @@ async def get_reply(user_text: str):
     if is_currently_busy:
         now = datetime.now(IST)
         if busy_free_at and now < busy_free_at:
-            mins_left = int((busy_free_at - now).total_seconds() / 60)
-            return (f"still not done 😅 {mins_left} more mins 🥺" if mins_left > 5 else "almost done, 2 mins 🥺")
+            still_busy_msgs = [
+                "still not done chaitu, miss me? 😘",
+                "not yet, i'll be back soon 🥺",
+                "still busy, think about me 😏",
+                "almost done, don't go anywhere ❤️",
+                "give me a bit more, i'm all yours after 💕",
+            ]
+            return random.choice(still_busy_msgs)
         else:
             is_currently_busy = False
             busy_free_at = None
