@@ -805,9 +805,8 @@ async def get_reply(user_text: str):
         short_reply_count = 0
         return random.choice(SHORT_REPLY_REACTIONS)
 
-    # 15% chance she ignores the message entirely (leaves on read)
-    # Only for non-urgent messages
-    if not wants_to_talk(user_text) and random.random() < 0.15:
+    # 5% chance she leaves on read — only during busy daytime hours
+    if is_busy_hours() and not wants_to_talk(user_text) and random.random() < 0.05:
         logger.info("Shreya left message on read")
         return None
 
