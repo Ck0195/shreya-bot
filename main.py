@@ -1069,8 +1069,7 @@ async def run_bot():
                         if not sent:
                             # Photo failed — send a cheeky text instead
                             await event.reply(random.choice(["camera is being shy 😭", "wait let me find a good one 🤭", "give me a sec 😏"]))
-                    elif random.random() < 0.20:
-                        await send_photo(client, YOUR_USERNAME)
+                    # no random photos on replies
                     else:
                         await event.reply(reply)
 
@@ -1109,22 +1108,14 @@ async def run_bot():
                         if reason and reason in FOLLOWUP_TEMPLATES and FOLLOWUP_TEMPLATES[reason]:
                             msg = random.choice(FOLLOWUP_TEMPLATES[reason])
                             await asyncio.sleep(random.uniform(2, 5))
-                            # Send photo after practice or shoot
-                            if reason in ["dance practice", "navaratan shoot"] and random.random() < 0.70:
-                                await client.send_file(
-                                    YOUR_USERNAME,
-                                    random.choice(SHREYA_PHOTOS),
-                                    caption=msg
-                                )
-                            else:
-                                async with client.action(YOUR_USERNAME, "typing"):
-                                    await asyncio.sleep(random.uniform(1, 3))
-                                await client.send_message(YOUR_USERNAME, msg)
+                            async with client.action(YOUR_USERNAME, "typing"):
+                                await asyncio.sleep(random.uniform(1, 3))
+                            await client.send_message(YOUR_USERNAME, msg)
                             logger.info(f"Followup after {reason}: {msg}")
 
             async def send_random_message():
                 try:
-                    if random.random() < 0.25:
+                    if False:  # no random photos in scheduled messages
                         await send_photo(client, YOUR_USERNAME)
                         return
                     reply = await get_random_message()
@@ -1184,9 +1175,6 @@ async def run_bot():
                 try:
                     reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good night text. About to sleep. Max 1 sentence with emojis."}])
                     if reply:
-                        if random.random() < 0.60:
-                            await send_photo(client, YOUR_USERNAME)
-                            await asyncio.sleep(random.uniform(1, 3))
                         await client.send_message(YOUR_USERNAME, reply)
                 except Exception as e:
                     logger.error(f"Night error: {e}")
