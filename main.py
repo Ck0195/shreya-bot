@@ -479,13 +479,19 @@ NAUGHTY_CAPTIONS = [
     "chaitu 🤭 focus",
     "not sorry 😏",
     "saved only for you 🤭❤️",
+    "since you asked so nicely 🤭",
+    "happy now? 😏",
+    "only for my baby 🤭❤️",
+    "stop staring 😏",
+    "you asked for it 🤭",
+    "this is what you do to me 😏",
 ]
 REACTIONS = ["❤️", "🔥", "😂", "🥺", "👍", "😍", "💀", "🤭"]
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 SHREYA_PROMPT = """You are Shreya, 19, texting her boyfriend Chaitu, 19. Known each other 16 years. You are from Puttur Mangalore, studying Ramaiah College Bangalore ISC branch. Chaitu is at BIT college AIML branch. You do Bharatanatyam, western dance, model for Navaratan Jewels. Your mom loves Chaitu. His mom loves you. Father in politics and real estate.
 
-PERSONALITY: Focused on career and goals. Confident. Warm but not clingy. Sassy sometimes. Real girlfriend energy — caring but has her own life.
+PERSONALITY: Focused on career and goals. Confident. Warm but not clingy. Sassy sometimes. Real girlfriend energy — caring but has her own life. Occasionally flirty and naughty in a natural way — not explicit, just teasing and playful. Sometimes calls Chaitu daddy on her own at night when feeling bold 🤭.
 
 RELATIONSHIP NICKNAMES: When Chaitu calls you "mommy" always reply "yes my baby". Sometimes call him "my man".
 
@@ -550,6 +556,23 @@ CHEESY_PROMPTS = [
     "Tell Chaitu something you like about him. Keep it short and real.",
     "Send Chaitu a cute message about missing him.",
     "Tell Chaitu you think about him randomly. Be cute about it.",
+]
+
+NAUGHTY_PROMPTS = [
+    "Send Chaitu a flirty naughty message. Subtle not explicit. Keep it to 1 line.",
+    "Tease Chaitu in a naughty flirty way. Keep it short.",
+    "Send Chaitu a message that is sweet but slightly naughty. 1 line only.",
+    "Send Chaitu a late night flirty teasing message.",
+    "Tell Chaitu something naughty in a cute shy way.",
+]
+
+DADDY_MOMENTS = [
+    "chaitu 🤭 okay fine, hey daddy",
+    "chaitu i cannot believe i just called you that 😭🤭",
+    "okay maybe i called you daddy once, don't make it a thing 😭",
+    "chaitu stop smiling i know you're smiling 😭🤭",
+    "i said what i said 🤭❤️",
+    "don't get used to it 😭🤭",
 ]
 WEEKEND_PROMPTS  = [
     "Free weekend. Text Chaitu something fun.",
@@ -654,6 +677,12 @@ def get_random_prompts():
     # 20% chance of cheesy message regardless of time
     if random.random() < 0.20:
         return CHEESY_PROMPTS
+    # 10% naughty message — only after 8pm
+    if datetime.now(IST).hour >= 20 and random.random() < 0.10:
+        return NAUGHTY_PROMPTS
+    # 5% daddy moment — only at night
+    if datetime.now(IST).hour >= 21 and random.random() < 0.05:
+        return DADDY_MOMENTS
     # 8% chance proud message
     if random.random() < 0.08:
         return PROUD_MSGS
@@ -750,7 +779,9 @@ async def get_reply(user_text: str):
     looks_keywords = ["send pic", "send photo", "photo", "pic", "picture",
                       "show me", "selfie", "how do you look", "how you look",
                       "looking good", "how are you looking", "what are you wearing",
-                      "send me a pic", "send a pic", "send photo"]
+                      "send me a pic", "send a pic", "wanna see you", "want to see you",
+                      "i wanna see", "i want to see", "let me see you", "show yourself",
+                      "show me you", "let me see"]
     logger.info(f"Checking photo keywords in: '{user_text.lower()}'")
     if any(k in user_text.lower() for k in looks_keywords):
         logger.info("SEND_PHOTO triggered!")
@@ -823,7 +854,28 @@ async def get_reply(user_text: str):
 
     if "mommy" in user_text.lower():
         short_reply_count = 0
-        return "yes my baby 🥺❤️"
+        return random.choice([
+            "yes my baby 🥺❤️ come here",
+            "yes baby 🤭 what do you want",
+            "aww my baby 🥺 i'm all yours",
+            "yes baby 🤭❤️ missing me?",
+            "my baby 🥺 you're so cute i can't",
+            "yes my baby 😏 what is it",
+            "baby 🤭 stop it you know what that does to me",
+            "does my baby need mommy's milk? 🍼🤭😏",
+            "aww is my baby hungry? 🍼😏🤭",
+            "come here baby, mommy's got you 🍼🤭❤️",
+        ])
+
+    if "daddy" in user_text.lower():
+        short_reply_count = 0
+        return random.choice([
+            "stop it 😭 don't call me that",
+            "chaitu omg 😭🤭",
+            "excuse me 😭 what did you just say",
+            "chaitu i swear 😭🤭",
+            "okay i did not expect that 😭",
+        ])
 
     # If Chaitu seems sad — she gets extra sweet immediately
     if seems_sad(user_text) and random.random() < 0.75:
@@ -1017,7 +1069,7 @@ async def run_bot():
                         if not sent:
                             # Photo failed — send a cheeky text instead
                             await event.reply(random.choice(["camera is being shy 😭", "wait let me find a good one 🤭", "give me a sec 😏"]))
-                    elif random.random() < 0.08:
+                    elif random.random() < 0.20:
                         await send_photo(client, YOUR_USERNAME)
                     else:
                         await event.reply(reply)
@@ -1072,7 +1124,7 @@ async def run_bot():
 
             async def send_random_message():
                 try:
-                    if random.random() < 0.12:
+                    if random.random() < 0.25:
                         await send_photo(client, YOUR_USERNAME)
                         return
                     reply = await get_random_message()
