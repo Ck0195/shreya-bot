@@ -746,6 +746,13 @@ async def get_reply(user_text: str):
     global conversation_history, is_currently_busy, busy_free_at, busy_reason
     global is_jealous, short_reply_count, last_reply_time
 
+    # Photo request — always handle first, nothing can block this
+    looks_keywords = ["how do you look", "how you look", "send pic", "send photo",
+                      "photo", "pic", "picture", "show me", "selfie", "looking good",
+                      "how are you looking", "what are you wearing"]
+    if any(k in user_text.lower() for k in looks_keywords):
+        return "SEND_PHOTO"
+
     fact = should_remember(user_text)
     if fact:
         add_to_memory(fact)
@@ -814,13 +821,6 @@ async def get_reply(user_text: str):
     if "mommy" in user_text.lower():
         short_reply_count = 0
         return "yes my baby 🥺❤️"
-
-    # If Chaitu asks how she looks — flag to send photo
-    looks_keywords = ["how do you look", "how you look", "send pic", "send photo",
-                      "photo", "pic", "picture", "show me", "selfie", "looking good",
-                      "how are you looking", "what are you wearing"]
-    if any(k in user_text.lower() for k in looks_keywords):
-        return "SEND_PHOTO"
 
     # If Chaitu seems sad — she gets extra sweet immediately
     if seems_sad(user_text) and random.random() < 0.75:
