@@ -746,11 +746,14 @@ async def get_reply(user_text: str):
     global conversation_history, is_currently_busy, busy_free_at, busy_reason
     global is_jealous, short_reply_count, last_reply_time
 
-    # Photo request — always handle first, nothing can block this
-    looks_keywords = ["how do you look", "how you look", "send pic", "send photo",
-                      "photo", "pic", "picture", "show me", "selfie", "looking good",
-                      "how are you looking", "what are you wearing"]
+    # Photo request — ALWAYS handle first, nothing blocks this, not even busy
+    looks_keywords = ["send pic", "send photo", "photo", "pic", "picture",
+                      "show me", "selfie", "how do you look", "how you look",
+                      "looking good", "how are you looking", "what are you wearing",
+                      "send me a pic", "send a pic", "send photo"]
+    logger.info(f"Checking photo keywords in: '{user_text.lower()}'")
     if any(k in user_text.lower() for k in looks_keywords):
+        logger.info("SEND_PHOTO triggered!")
         return "SEND_PHOTO"
 
     fact = should_remember(user_text)
@@ -868,10 +871,11 @@ async def get_reply(user_text: str):
         short_reply_count = 0
         return random.choice(SHORT_REPLY_REACTIONS)
 
-    # 5% chance she leaves on read — only during busy daytime hours
+    # 5% chance she leaves on read — only during busy daytime hours, never for photo requests
     if is_busy_hours() and not wants_to_talk(user_text) and random.random() < 0.05:
-        logger.info("Shreya left message on read")
-        return None
+        if "pic" not in user_text.lower() and "photo" not in user_text.lower() and "selfie" not in user_text.lower():
+            logger.info("Shreya left message on read")
+            return None
 
     if len(conversation_history) > 30:
         conversation_history = conversation_history[-30:]
@@ -937,21 +941,21 @@ async def send_photo(client, username, naughty=False):
         if naughty:
             caption = random.choice(NAUGHTY_CAPTIONS)
         else:
-            # 30% chance naughty caption even on normal sends
             caption = random.choice(NAUGHTY_CAPTIONS if random.random() < 0.30 else PHOTO_CAPTIONS)
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    data = await resp.read()
-                    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
-                        f.write(data)
-                        tmp_path = f.name
-                    await client.send_file(username, tmp_path, caption=caption)
-                    os.remove(tmp_path)
-                    logger.info("Photo sent ✅")
-                    return True
+        # Send URL directly — Telegram fetches it itself, no download needed
+        await client.send_file(username, url, caption=caption)
+        logger.info("Photo sent ✅")
+        return True
     except Exception as e:
         logger.error(f"Photo error: {e}")
+        # Fallback — try a different photo
+        try:
+            url2 = random.choice(SHREYA_PHOTOS)
+            await client.send_file(username, url2, caption=caption)
+            logger.info("Photo sent ✅ (fallback)")
+            return True
+        except Exception as e2:
+            logger.error(f"Photo fallback error: {e2}")
     return False
 
 async def send_reaction(client, event):
@@ -1008,7 +1012,11 @@ async def run_bot():
                         return
 
                     if reply == "SEND_PHOTO":
-                        await send_photo(client, YOUR_USERNAME, naughty=True)
+                        logger.info("Sending photo now...")
+                        sent = await send_photo(client, YOUR_USERNAME, naughty=True)
+                        if not sent:
+                            # Photo failed — send a cheeky text instead
+                            await event.reply(random.choice(["camera is being shy 😭", "wait let me find a good one 🤭", "give me a sec 😏"]))
                     elif random.random() < 0.08:
                         await send_photo(client, YOUR_USERNAME)
                     else:
