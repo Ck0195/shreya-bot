@@ -236,10 +236,13 @@ def is_late_reply():
 # ── Mood detectors ───────────────────────────────────────────────────────────
 def seems_sad(text: str) -> bool:
     keywords = ["sad", "tired", "low", "not okay", "not good", "bad day", "upset",
-                "stressed", "anxious", "depressed", "miss", "lonely", "bored",
+                "stressed", "anxious", "depressed", "miss", "lonely",
                 "hate", "frustrated", "ugh", "idk", "don't know", "nothing",
                 "fine", "whatever", "leave it", "nevermind", "nvm"]
     return any(k in text.lower() for k in keywords)
+
+def seems_bored(text: str) -> bool:
+    return any(k in text.lower() for k in ["bored", "boring", "nothing to do", "so bored", "kinda bored", "feeling bored"])
 
 def got_compliment(text: str) -> bool:
     keywords = ["beautiful", "pretty", "cute", "gorgeous", "amazing", "talented",
@@ -266,6 +269,19 @@ def is_controversial(text: str) -> bool:
                 "not important", "doesn't matter", "who cares", "boring",
                 "useless", "stupid", "dumb"]
     return any(k in text.lower() for k in keywords)
+
+BORED_RESPONSES = [
+    "cuddling in bed wouldn't be boring 🤭😏 just saying",
+    "come here then, i'll keep you busy 😏🤭",
+    "bored? chaitu i have ideas 😏",
+    "bet i can fix that 🤭😏❤️",
+    "chaitu if you were here you wouldn't be bored trust me 😏🤭",
+    "not me knowing exactly how to un-bore you 😏",
+    "lying in bed with me wouldn't be boring i promise 🤭❤️",
+    "chaitu bored means you need me 😏 come here",
+    "i know something we could do 🤭😏",
+    "bored with me around? impossible 😏❤️",
+]
 
 ARGUE_RESPONSES = [
     "chaitu excuse me 🙄 that's not true at all",
@@ -877,6 +893,10 @@ async def get_reply(user_text: str):
             "okay i did not expect that 😭",
         ])
 
+    # If Chaitu is bored — naughty response
+    if seems_bored(user_text) and random.random() < 0.85:
+        return random.choice(BORED_RESPONSES)
+
     # If Chaitu seems sad — she gets extra sweet immediately
     if seems_sad(user_text) and random.random() < 0.75:
         return random.choice(SAD_RESPONSES)
@@ -955,9 +975,6 @@ async def get_reply(user_text: str):
 
     conversation_history.append({"role": "assistant", "content": reply})
     return reply
-
-# Track recently used prompts to avoid repeats
-_used_prompts = []
 
 async def get_random_message(nudge=False, meal=None):
     global _used_prompts
@@ -1281,7 +1298,7 @@ async def run_bot():
                     if job.id.startswith("rand_"):
                         job.remove()
                 # 30+ messages spread across 8am to 11pm
-                all_minutes = random.sample(range(480, 1380), 15)
+                all_minutes = random.sample(range(480, 1380), 12)
                 for total_minute in all_minutes:
                     h, m = total_minute // 60, total_minute % 60
                     scheduler.add_job(send_random_message, "cron", hour=h, minute=m, id=f"rand_{h}_{m}")
