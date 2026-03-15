@@ -897,6 +897,21 @@ async def get_reply(user_text: str):
     if seems_bored(user_text) and random.random() < 0.85:
         return random.choice(BORED_RESPONSES)
 
+    # If Chaitu asks why she's mad — she explains directly
+    asking_why = ["what did i do", "why are you mad", "what happened", "why mad",
+                  "what's wrong", "whats wrong", "are you okay", "you okay",
+                  "why are you angry", "what did i do wrong", "tell me",
+                  "talk to me", "what is it", "why", "what's up"]
+    if is_jealous and any(k in user_text.lower() for k in asking_why):
+        return random.choice([
+            "you know exactly what you did chaitu 🙄",
+            "took you that long to reply and now you're asking what you did 🙄",
+            "you were ignoring me that's what 😤",
+            "chaitu you literally seen zoned me 🙄",
+            "you disappeared for so long and you're asking me why i'm mad 🙄",
+            "i texted you and you just didn't reply chaitu 😤",
+        ])
+
     # If Chaitu seems sad — she gets extra sweet immediately
     if seems_sad(user_text) and random.random() < 0.75:
         return random.choice(SAD_RESPONSES)
