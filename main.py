@@ -595,6 +595,19 @@ WEEKEND_PROMPTS  = [
     "Lazy weekend morning. Text Chaitu.",
     "Bored this weekend. Text Chaitu.",
 ]
+ANGRY_MODE_PROMPTS = [
+    "Send Chaitu a sarcastic text about him disappearing for so long. You missed him but you're not showing it easily.",
+    "Text Chaitu sarcastically asking if he's still alive since he vanished.",
+    "Scold Chaitu for not informing you before disappearing. Be sharp but caring underneath.",
+    "Send Chaitu a cold sarcastic good morning since he's back.",
+    "Ask Chaitu sarcastically how his life was while he was gone.",
+    "Tell Chaitu sarcastically that you managed just fine without him. But you didn't.",
+    "Send Chaitu a passive aggressive message about him being back.",
+    "Scold Chaitu for not texting even once. You were worried.",
+    "Send Chaitu a sarcastic meal check — ask if he even bothered to eat while ignoring you.",
+    "Tell Chaitu sarcastically that you hope he had fun disappearing.",
+]
+
 NUDGE_PROMPTS    = [
     "Chaitu hasn't texted. Miss him. Text him casually.",
     "Haven't heard from Chaitu. Check on him.",
@@ -679,6 +692,10 @@ FOLLOWUP_TEMPLATES = {
 }
 
 def get_random_prompts():
+    # If in angry mode — override with sarcastic prompts
+    if angry_mode:
+        return ANGRY_MODE_PROMPTS
+
     # 15% chance of goal reminder if Chaitu has goals saved
     if random.random() < 0.15 and get_goals():
         return ["GOAL_REMINDER"]  # special flag
@@ -741,6 +758,9 @@ def get_prompt(jealous=False, short_reply=False, progression_context=""):
     exam_str = "NOTE: Exam season. You are stressed and studying.\n" if is_exam_month() else ""
     jealous_str = "IMPORTANT: Chaitu took very long to reply. Be slightly cold for 1-2 messages then go back to normal.\n" if jealous else ""
     short_str = "IMPORTANT: Chaitu keeps giving one word lazy replies. You are a little annoyed about it.\n" if short_reply else ""
+    angry_str = ""
+    if angry_mode:
+        angry_str = "IMPORTANT MOOD: Chaitu disappeared for a long time without informing. You are hurt and angry but you still deeply care about him. Be sarcastic and cold in EVERY message — meal checks, random texts, everything. Scold him sometimes for vanishing. Don't let him off easy but show you missed him underneath the anger.\n"
     prog_str = f"CONTINUITY: {progression_context}\n" if progression_context else ""
 
     return SHREYA_PROMPT.format(
@@ -751,7 +771,7 @@ def get_prompt(jealous=False, short_reply=False, progression_context=""):
         exam=exam_str,
         jealous=jealous_str,
         short_reply=short_str,
-        progression=prog_str,
+        progression=prog_str + angry_str,
     )
 
 # ── Groq ──────────────────────────────────────────────────────────────────────
