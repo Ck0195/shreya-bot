@@ -1381,4 +1381,4 @@ async def start():
     await asyncio.gather(run_web(), run_bot())
 
 if __name__ == "__main__":
-    asyncio.run(start())
+    asyncio.run(start()) 
