@@ -395,6 +395,44 @@ WEEKEND_PROMPTS = [
     "Tell Chaitu you wish he was there with you.",
     "Send Chaitu a weekend flirty message.",
 ]
+FESTIVALS = {
+    (3, 14): ("Holi", ["happy holi chaitu 🎨😂 don't you dare put colour on me", "chaitu happy holi 🎨 stay away from me with that colour 😂"]),
+    (10, 2): ("Dussehra", ["happy dussehra chaitu 🙏", "chaitu happy dussehra 🙏❤️"]),
+    (10, 20): ("Diwali", ["happy diwali chaitu 🪔✨ don't burst too many crackers", "chaitu happy diwali 🪔 stay safe okay 🥺"]),
+    (4, 14): ("Ugadi", ["happy ugadi chaitu 🌸", "chaitu happy ugadi 🌸❤️ new year new us"]),
+    (1, 14): ("Sankranti", ["happy sankranti chaitu 🪁", "chaitu happy sankranti 🪁❤️"]),
+    (3, 8): ("Women's Day", ["chaitu it's women's day and you better say something nice 😏", "women's day chaitu, appreciate me 😤🤭"]),
+}
+
+SONGS_REELS = [
+    "chaitu i've had this song on loop all day and i can't stop 😭",
+    "okay this reel just made me think of you for no reason 😭",
+    "chaitu listen to this song trust me 🥺",
+    "this reel is literally us 😭💀",
+    "chaitu i just saw a reel and i'm not okay 😭",
+    "okay this song has been in my head since morning and it's your fault somehow",
+    "chaitu this artist is so good omg you need to listen",
+    "i just watched this reel 3 times in a row 😭",
+    "chaitu this song is giving me feelings 😭🥺",
+    "okay this reel just described my life 💀",
+]
+
+MONTHLY_ANNIVERSARY_MSGS = [
+    "chaitu it's our monthly 🥺 you better not have forgotten",
+    "monthly anniversary chaitu 🥺❤️ say something sweet",
+    "chaitu do you know what day it is 🥺 monthly anniversary",
+    "it's our day chaitu 🥺❤️ i love you even when you're annoying",
+    "chaitu monthly 🥺 16 years and still going strong",
+]
+
+RAINY_PROMPTS = [
+    "It's raining in Bangalore. Text Chaitu something cozy and missing him.",
+    "Rainy day. Tell Chaitu you wish he was here. Be cute.",
+    "Rain outside. Randomly thinking of Chaitu. Text him.",
+    "Rainy evening. Send Chaitu a cozy flirty message.",
+    "It's pouring outside. Tell Chaitu rain makes you think of him.",
+]
+
 NUDGE_PROMPTS = [
     "Chaitu hasn't texted. Miss him. Text him casually.",
     "Haven't heard from Chaitu. Check on him.",
@@ -958,6 +996,29 @@ async def run_bot():
                     if reply: await client.send_message(YOUR_USERNAME, reply)
                 except Exception as e:
                     logger.error(f"Special day error: {e}")
+
+            async def check_festival():
+                try:
+                    now = datetime.now(IST)
+                    key = (now.month, now.day)
+                    if key in FESTIVALS:
+                        name, msgs = FESTIVALS[key]
+                        msg = random.choice(msgs)
+                        await client.send_message(YOUR_USERNAME, msg)
+                        logger.info(f"Festival {name}: {msg}")
+                except Exception as e:
+                    logger.error(f"Festival error: {e}")
+
+            async def check_monthly_anniversary():
+                try:
+                    # Fire on the same day each month as anniversary
+                    ann_day = ANNIVERSARY[1]
+                    if datetime.now(IST).day == ann_day:
+                        msg = random.choice(MONTHLY_ANNIVERSARY_MSGS)
+                        await client.send_message(YOUR_USERNAME, msg)
+                        logger.info(f"Monthly anniversary: {msg}")
+                except Exception as e:
+                    logger.error(f"Anniversary error: {e}")
 
             async def send_exam_goodluck():
                 try:
