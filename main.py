@@ -488,6 +488,16 @@ MAKE_UP_MSGS = [
     "fine fine i was being too harsh 🥺 we okay?",
 ]
 
+OVERLOADED_LOVE_MSGS = [
+    "mera bachaa 🥺❤️ i love you so much sometimes it's annoying",
+    "chaitu mera bachaa 🥺 you have no idea what you do to me",
+    "mera bachaa come here 🥺❤️",
+    "ugh mera bachaa 😭❤️ stop being so you",
+    "mera bachaa 🥺 i'm so lucky and i hate how much i mean that",
+    "chaitu mera bachaa 🥺😭 i genuinely can't",
+    "mera bachaa ❤️ okay i love you too much today",
+]
+
 DEEP_Q_MSGS = [
     "chaitu where do you see us in 5 years 🥺",
     "do you ever think about what our life looks like later",
