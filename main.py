@@ -528,6 +528,12 @@ RANDOM_EMOJIS = ["🥺","❤️","😭","💀","✨","😍","🫶","💕","😤"
 
 # ── Goals ─────────────────────────────────────────────────────────────────────
 GOALS_FILE = "/tmp/shreya_goals.json"
+
+# Chaitu's personal goals — Shreya reminds him about these
+CHAITU_PERSONAL_GOALS = [
+    "complete cybersecurity course",
+    "buy Aprilia RS457 bike",
+]
 def load_goals():
     try:
         if os.path.exists(GOALS_FILE):
