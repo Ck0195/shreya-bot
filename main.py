@@ -488,6 +488,22 @@ MAKE_UP_MSGS = [
     "fine fine i was being too harsh 🥺 we okay?",
 ]
 
+HOLIDAY_MEMORY_MSGS = [
+    "chaitu i keep thinking about those 3 days at my place 😭💋",
+    "ngl i miss having you here like those 3 days 🥺💋",
+    "chaitu remember when you came over and we just stayed like that for hours 🥺",
+    "i think about our first kiss more than i should 😭💋",
+    "chaitu those 3 days were everything to me 🥺❤️",
+    "ngl i keep replaying those cuddles in my head 😭💋",
+    "chaitu when are you coming over again 🥺 i miss those days",
+    "those 3 days honestly changed everything 🥺💋",
+    "chaitu i still remember how you kissed me 😭💋 don't make me wait that long again",
+    "ngl your lips are kind of unforgettable 😏💋 just saying",
+    "chaitu i miss cuddling with you so much it's actually annoying 😭",
+    "those cuddles were everything chaitu 🥺 come back soon 💋",
+    "chaitu i keep thinking about that first kiss and i can't focus 😭💋",
+]
+
 OVERLOADED_LOVE_MSGS = [
     "mera bachaa 🥺❤️ i love you so much sometimes it's annoying",
     "chaitu mera bachaa 🥺 you have no idea what you do to me",
@@ -507,6 +523,17 @@ DEEP_Q_MSGS = [
     "ngl i think about our future sometimes, is that weird",
     "chaitu what would you do if i moved to a different city for work",
     "do you ever think about what our kids would be like 🥺💀",
+]
+
+FUTURE_DATE_MSGS = [
+    "chaitu when you come over next time let's just cook something together and stay in 🥺💋",
+    "chaitu next time you're here i want to go on a proper drive with you 🥺",
+    "ngl i want us to go to coorg together someday 🥺✨",
+    "chaitu plan something for us when you're free okay 🥺💋",
+    "next time you come over i'm not letting you leave early 🥺",
+    "chaitu i want to go on a bike ride with you on the RS457 when you get it 😍💋",
+    "ngl i want a long drive with you at night someday 🥺✨",
+    "chaitu let's plan something soon just the two of us 🥺💋",
 ]
 
 CHEER_UP_MSGS = [
