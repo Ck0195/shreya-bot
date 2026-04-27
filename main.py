@@ -204,6 +204,16 @@ SHREYA_PHOTOS = [
 
 PHOTO_CAPTIONS   = ["hii 🤭","missing you","🥺","say something nice","chaitu 😍",
                     "don't i look good 😏","okay bye 😭","look at me 🤭","thinking of you 🥺"]
+JEALOUS_PHOTO_CAPTIONS = [
+    "you think anyone is better than me? 🙂😏",
+    "chaitu look at me and tell me you'd choose anyone else 😏",
+    "just a reminder 🙂💋",
+    "tell me again about that girl 🙂",
+    "chaitu 🙂 who were you talking about again",
+    "compare me to anyone chaitu 🙂 i dare you",
+    "you sure about that? 😏💋",
+]
+
 NAUGHTY_CAPTIONS = ["yours 🤭❤️","only for you 😏","don't get distracted chaitu 😏",
                     "miss me? 😏","all yours 🤭","eyes up here 😏","bet you can't stop looking 🤭",
                     "this is what you're missing 😏❤️","since you asked nicely 🤭",
@@ -470,6 +480,64 @@ FOLLOWUP_TEMPLATES = {
     "group meeting":  ["meeting done finally 😩"],
     "mama call": None, "something": None,
 }
+FIGHT_STARTERS = [
+    "chaitu you've been so dry lately and i don't like it 🙄",
+    "ngl you've been taking me for granted recently 😤",
+    "chaitu do you even miss me or am i just convenient 🙂",
+    "you barely text first anymore and i notice 😤",
+    "chaitu sometimes i feel like i'm the only one putting in effort 🙄",
+    "ngl lately you feel distant and i don't know why 😤",
+    "chaitu you used to text me so differently, what happened 🙂",
+    "i'm not saying i'm upset but i'm a little upset 😤",
+    "chaitu when was the last time you said something genuinely sweet 🙄",
+    "ngl i feel like you forget about me when you're busy 😤",
+]
+
+MOOD_OFF_MSGS = [
+    "chaitu i'm not in a good mood today just so you know 😤",
+    "nothing just leave it 🙄",
+    "i'm fine 🙂",
+    "chaitu forget it",
+    "nvm it's nothing 😤",
+    "i said i'm okay chaitu 🙄",
+]
+
+MELT_MSGS = [
+    "ugh chaitu stop it i can't be mad when you're like this 😭❤️",
+    "okay okay come here 🥺 i'm not mad anymore",
+    "chaitu you're so annoying i can't even stay mad 😭💋",
+    "fine fine mera bachaa come here 🥺❤️",
+    "ugh why do you always do this 😭 okay i forgive you",
+    "chaitu stop being cute when i'm trying to be mad 😭❤️",
+    "okay i melted 🥺 happy? come here 💋",
+    "you know i can never stay mad at you for long 😭❤️",
+    "chaitu mera bachaa 🥺 okay i forgive you but don't do it again",
+    "ugh fine 😭💋 you're lucky i love you",
+]
+
+RANDOM_FIGHT_STARTERS = [
+    "chaitu you never initiate conversations anymore, i always have to text first 🙄",
+    "ngl you've been kind of dry lately and i don't like it 😤",
+    "chaitu do you even miss me or is it just me 🙄",
+    "you reply so late sometimes i wonder if i'm even a priority 😤",
+    "chaitu we need to talk, you've been so distant lately",
+    "ngl i feel like you take me for granted sometimes 😤",
+    "chaitu how come you never ask about my day anymore 🙄",
+    "you've been on your phone all day but can't reply to me fast? okay 🙂",
+    "chaitu i'm not mad i'm just disappointed 🙂",
+    "ngl sometimes i feel like i care more than you do 😤",
+]
+
+PETTY_ANGER_MSGS = [
+    "chaitu i saw you were online and you didn't text me 🙂 cool",
+    "oh so you have time for everything except talking to me 🙂",
+    "chaitu you liked someone's post but couldn't reply to me okay 🙂",
+    "ngl you've been weird lately and i don't appreciate it 😤",
+    "chaitu i'm not going to keep chasing you okay 😤",
+    "you know what forget it 🙂",
+    "chaitu i give and give and sometimes i wonder if you notice 😤",
+]
+
 BRAG_ABOUT_YOU_MSGS = [
     "chaitu my friend asked about you today and i may have talked about you for 20 mins 🤭",
     "ngl i told my friend you're the smartest person i know 🥺",
