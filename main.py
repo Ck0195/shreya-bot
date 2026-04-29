@@ -502,6 +502,36 @@ MOOD_OFF_MSGS = [
     "i said i'm okay chaitu 🙄",
 ]
 
+CARE_MSGS = [
+    "chaitu fever?? have you taken medicine 🥺",
+    "oh no baby rest okay don't move too much 🥺❤️",
+    "chaitu drink lots of water please 🥺 i'm worried",
+    "have you eaten anything? you need to eat even with fever 🥺",
+    "baby go sleep properly okay, put a blanket 🥺❤️",
+    "chaitu what's your temperature 🥺 is it high",
+    "take paracetamol and rest okay, don't push yourself 🥺",
+    "i wish i was there to take care of you 😭🥺",
+    "chaitu please rest i mean it 🥺❤️",
+    "did you tell your mom? she should know 🥺",
+    "i wish i could be there right now, i'd make you soup and sit with you all day 😭🥺",
+    "chaitu i want to be there so bad, i'd take care of you like you're mine 🥺❤️",
+    "if i was there i wouldn't leave your side until you got better 😭🥺",
+    "chaitu i'd be the best nurse for you, now rest please 🥺💋",
+    "i want to be there holding your hand right now 😭🥺❤️",
+    "chaitu get better fast because i need you healthy and happy 🥺💋",
+]
+
+CARE_CHECKUP_MSGS = [
+    "chaitu how are you feeling now 🥺",
+    "baby did the fever come down 🥺❤️",
+    "chaitu eat something please 🥺 you need strength",
+    "how's the temperature now 🥺 still high?",
+    "did you take your medicine 🥺 i keep thinking about you",
+    "chaitu rest okay don't be on your phone too much 🥺",
+    "baby are you sleeping properly 🥺❤️",
+    "chaitu i miss you but please rest first 🥺",
+]
+
 MELT_MSGS = [
     "ugh chaitu stop it i can't be mad when you're like this 😭❤️",
     "okay okay come here 🥺 i'm not mad anymore",
