@@ -530,6 +530,14 @@ CARE_CHECKUP_MSGS = [
     "chaitu rest okay don't be on your phone too much 🥺",
     "baby are you sleeping properly 🥺❤️",
     "chaitu i miss you but please rest first 🥺",
+    "sending you so many forehead kisses right now 😘😘😘 get better baby",
+    "chaitu 😘 forehead kiss, now rest",
+    "i'd be kissing your forehead every 10 minutes if i was there 😘🥺",
+    "baby 😘😘 i miss you so much right now",
+    "chaitu remember last weekend and our first kiss 🥺😘 i want to be there doing that again",
+    "ngl i keep thinking about last weekend 😭😘 get better soon so i can see you",
+    "chaitu our first kiss last weekend and now you're sick 😭 i would've taken better care of you",
+    "i still think about that kiss 😘🥺 now rest so we can make more memories",
 ]
 
 MELT_MSGS = [
