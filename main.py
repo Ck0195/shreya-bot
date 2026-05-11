@@ -662,6 +662,47 @@ RANDOM_EMOJIS = ["🥺","❤️","😭","💀","✨","😍","🫶","💕","😤"
 # ── Goals ─────────────────────────────────────────────────────────────────────
 GOALS_FILE = "/tmp/shreya_goals.json"
 
+# ── Song library ─────────────────────────────────────────────────────────────
+SONG_LIBRARY = {
+    "majboor":          "https://files.catbox.moe/xwryrx.mp3",
+    "maand":            "https://files.catbox.moe/g056mu.mp3",
+    "mzht":             "https://files.catbox.moe/u4urb1.mp3",
+    "ishq":             "https://files.catbox.moe/2z623i.mp3",
+    "kaun tujhe":       "https://files.catbox.moe/d1xcyv.mp4",
+    "tere liye":        "https://files.catbox.moe/kzfmds.mp3",
+    "awaara angara":    "https://files.catbox.moe/pelqy7.mp3",
+    "gehra hua":        "https://files.catbox.moe/22waip.mp3",
+    "sun raha hai":     "https://files.catbox.moe/qdkzxr.mp3",
+    "zara zara":        "https://files.catbox.moe/h4o6d5.mp3",
+    "barbaad":          "https://files.catbox.moe/oedlhk.mp3",
+    "humsafar":         "https://files.catbox.moe/403ebt.mp3",
+    "teri meri":        "https://files.catbox.moe/941qad.mp3",
+    "favourite":        "https://files.catbox.moe/9gwpla.mp3",
+}
+
+SONG_CAPTIONS = [
+    "this one's for you 🥺💋",
+    "listen to this chaitu 🥺",
+    "this song is literally us 😭💋",
+    "okay this one hits different 😭🥺",
+    "chaitu listen 🥺❤️",
+    "sending you this 💋",
+]
+
+def detect_song_request(text: str):
+    """Check if Chaitu is asking for a specific song"""
+    text_lower = text.lower()
+    # Check if message contains a song trigger word
+    triggers = ["play", "send", "song", "music", "listen", "put on"]
+    has_trigger = any(t in text_lower for t in triggers)
+    if not has_trigger and "?" not in text:
+        return None
+    # Match song name
+    for key in SONG_LIBRARY:
+        if key in text_lower:
+            return key
+    return None
+
 # Chaitu's personal goals — Shreya reminds him about these
 CHAITU_PERSONAL_GOALS = [
     "complete cybersecurity course",
