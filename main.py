@@ -692,12 +692,7 @@ SONG_CAPTIONS = [
 def detect_song_request(text: str):
     """Check if Chaitu is asking for a specific song"""
     text_lower = text.lower()
-    # Check if message contains a song trigger word
-    triggers = ["play", "send", "song", "music", "listen", "put on"]
-    has_trigger = any(t in text_lower for t in triggers)
-    if not has_trigger and "?" not in text:
-        return None
-    # Match song name
+    # First just check if any song name is in the message — no trigger word needed
     for key in SONG_LIBRARY:
         if key in text_lower:
             return key
