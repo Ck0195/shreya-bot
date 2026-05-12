@@ -1023,20 +1023,14 @@ async def run_bot():
                         if song_url:
                             try:
                                 caption = random.choice(SONG_CAPTIONS)
-                                ext = ".mp4" if song_url.endswith(".mp4") else ".mp3"
-                                async with aiohttp.ClientSession() as sess:
-                                    async with sess.get(song_url) as resp:
-                                        if resp.status == 200:
-                                            data = await resp.read()
-                                            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
-                                                tf.write(data)
-                                                tmp_path = tf.name
-                                await client.send_file(YOUR_USERNAME, tmp_path, caption=caption)
-                                os.remove(tmp_path)
+                                # Send URL directly — let Telegram fetch it
+                                await client.send_file(YOUR_USERNAME, song_url, caption=caption)
                                 logger.info(f"Song sent: {song_key}")
                             except Exception as e:
-                                logger.error(f"Song error: {e}")
-                                await event.reply("chaitu it's not loading 😭 try again")
+                                logger.error(f"Song direct error: {e}")
+                                # Fallback — send as message with link
+                                await event.reply(f"{caption}
+{song_url}")
                         return
 
                     if random.random() < 0.20 and len(user_text.split()) > 3:
