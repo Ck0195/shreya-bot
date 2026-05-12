@@ -1015,6 +1015,30 @@ async def run_bot():
                     no_reply_reacted = False
                     logger.info(f"Chaitu: {user_text}")
 
+                    # ── Song request — handle FIRST before anything ──
+                    song_key = detect_song_request(user_text)
+                    if song_key:
+                        logger.info(f"Song request: {song_key}")
+                        song_url = SONG_LIBRARY.get(song_key)
+                        if song_url:
+                            try:
+                                caption = random.choice(SONG_CAPTIONS)
+                                ext = ".mp4" if song_url.endswith(".mp4") else ".mp3"
+                                async with aiohttp.ClientSession() as sess:
+                                    async with sess.get(song_url) as resp:
+                                        if resp.status == 200:
+                                            data = await resp.read()
+                                            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
+                                                tf.write(data)
+                                                tmp_path = tf.name
+                                await client.send_file(YOUR_USERNAME, tmp_path, caption=caption)
+                                os.remove(tmp_path)
+                                logger.info(f"Song sent: {song_key}")
+                            except Exception as e:
+                                logger.error(f"Song error: {e}")
+                                await event.reply("chaitu it's not loading 😭 try again")
+                        return
+
                     if random.random() < 0.20 and len(user_text.split()) > 3:
                         await asyncio.sleep(random.uniform(10, 30))
                         await send_reaction(client, event)
