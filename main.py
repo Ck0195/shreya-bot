@@ -680,9 +680,9 @@ async def run_bot():
                                 await event.reply("chaitu it's not loading 😭 try again")
                         return
 
-                    # Offline after 8pm / before 8am
+                    # Offline after 11pm / before 7am
                     now_hour = datetime.now(IST).hour
-                    if now_hour >= 20 or now_hour < 8:
+                    if now_hour >= 23 or now_hour < 7:
                         return
 
                     if random.random() < 0.20 and len(user_text.split()) > 3:
