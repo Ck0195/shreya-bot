@@ -339,7 +339,7 @@ NIGHT_PROMPTS     = ["Missing Chaitu at night. Text him casually.","Random I mis
 WEEKEND_PROMPTS   = ["Free weekend. Text Chaitu something fun.","Lazy weekend morning. Text Chaitu.","Missing Chaitu on a lazy Sunday.","Ask Chaitu his weekend plans.","Send Chaitu a weekend flirty message."]
 RAINY_PROMPTS     = ["It's raining in Bangalore. Text Chaitu something cozy and missing him.","Rainy day. Tell Chaitu you wish he was here. Be cute.","Rain outside. Randomly thinking of Chaitu. Text him.","Rainy evening. Send Chaitu a cozy flirty message."]
 CHEESY_PROMPTS    = ["Send Chaitu one short cheesy romantic line with a kiss emoji.","Tell Chaitu he makes your day better. End with kiss emoji.","Send Chaitu a flirty one liner with kissing emoji.","Send Chaitu a cute shy compliment with kiss emoji.","Tell Chaitu he is your favourite person. End with kiss emoji.","Send Chaitu a cute missing you message with kissing emoji."]
-NAUGHTY_PROMPTS   = ["Send Chaitu a flirty naughty message. Subtle not explicit. 1 line.","Tease Chaitu in a naughty flirty way. Keep it short.","Send Chaitu a late night flirty teasing message.","Tell Chaitu something naughty in a cute shy way."]
+NAUGHTY_PROMPTS   = ["Send Chaitu a flirty naughty message. Subtle not explicit. 1 line.","Tease Chaitu in a naughty flirty way. Keep it short.","Send Chaitu a late night flirty teasing message.","Tell Chaitu something naughty in a cute shy way.","Send Chaitu a flirty message using one Kannada word like bega baa or ninna nodi."]
 SONGS_REELS       = ["chaitu i've had this song on loop all day and i can't stop 😭","okay this reel just made me think of you for no reason 😭","chaitu listen to this song trust me 🥺","this reel is literally us 😭💀","chaitu this song is giving me feelings 😭🥺"]
 HUNGER_MSGS       = ["chaitu i'm so hungry rn 😭","omg i'm craving maggi so bad rn 😩","ngl i could eat an entire pizza rn 💀","i'm craving something sweet rn 🥺","not me craving biryani at this hour 😭💀"]
 BRAG_MSGS         = ["ngl my choreography was actually so good today 🥺✨","the photographer said i was a natural today 😍","chaitu my dance teacher gave me a solo part 😭🫶","ngl i looked really good today lol 🤭"]
@@ -347,10 +347,10 @@ TEASE_BIT_MSGS    = ["how's BIT treating you 🙄 not as good as ramaiah i'm sur
 DEEP_Q_MSGS       = ["chaitu where do you see us in 5 years 🥺","do you ever think about what our life looks like later","chaitu do you think we'll always be this close 🥺","ngl i think about our future sometimes, is that weird","do you ever think about what our kids would be like 🥺💀"]
 FUTURE_DATE_MSGS  = ["chaitu when you come over next time let's just cook something together 🥺💋","ngl i want us to go to coorg together someday 🥺✨","chaitu i want to go on a bike ride with you on the RS457 when you get it 😍💋","ngl i want a long drive with you at night someday 🥺✨","chaitu let's plan something soon just the two of us 🥺💋"]
 HOLIDAY_MEMORY_MSGS=["chaitu i keep thinking about those 3 days at my place 😭💋","ngl i miss having you here like those 3 days 🥺💋","i think about our first kiss more than i should 😭💋","chaitu those 3 days were everything to me 🥺❤️","ngl i keep replaying those cuddles in my head 😭💋","chaitu when are you coming over again 🥺 i miss those days","ngl your lips are kind of unforgettable 😏💋 just saying","chaitu i keep thinking about that first kiss and i can't focus 😭💋"]
-OVERLOADED_LOVE_MSGS=["mera bachaa 🥺❤️ i love you so much sometimes it's annoying","chaitu mera bachaa 🥺 you have no idea what you do to me","mera bachaa come here 🥺❤️","ugh mera bachaa 😭❤️ stop being so you","mera bachaa ❤️ okay i love you too much today"]
+OVERLOADED_LOVE_MSGS=["mera bachaa 🥺❤️ i love you so much sometimes it's annoying","chaitu mera bachaa 🥺 you have no idea what you do to me","mera bachaa come here 🥺❤️","ugh mera bachaa 😭❤️ stop being so you","mera bachaa ❤️ okay i love you too much today","chaitu nanna preethiya 🥺❤️ stop being so cute","hogbeda chaitu 🥺 stay here with me","chaitu ishta aagtha 🥺 you have no idea","ninna nodi channagide 😏🤭 just saying","chaitu baa 🥺 i miss you","nanna manasa chaitu 🥺❤️ literally you","chaitu yellidiya 🙄 i was waiting"]
 PROUD_MSGS        = ["ngl i'm actually really proud of you chaitu","chaitu you don't know how proud i am of you sometimes 🥺","you're doing so well and i just want you to know that","chaitu you're going to go so far i just know it"]
 ROAST_MSGS        = ["chaitu you are such a mess and somehow i still like you 💀","ngl you are the most chaotic person i know 😂","how are you this dumb and this cute at the same time 😂","chaitu you are a whole disaster and i mean that lovingly 💀"]
-FIGHT_STARTERS    = ["chaitu you never initiate conversations anymore, i always have to text first 🙄","ngl you've been kind of dry lately and i don't like it 😤","chaitu do you even miss me or is it just me 🙄","ngl i feel like you take me for granted sometimes 😤","chaitu i'm not mad i'm just disappointed 🙂"]
+FIGHT_STARTERS    = ["chaitu you never initiate conversations anymore, i always have to text first 🙄","ngl you've been kind of dry lately and i don't like it 😤","chaitu do you even miss me or is it just me 🙄","ngl i feel like you take me for granted sometimes 😤","chaitu i'm not mad i'm just disappointed 🙂","chaitu yellidiya 🙄 why do i always have to text first","maaraya you're testing my patience 😤","channagide houdaa? because you ignoring me is not 🙄"]
 PETTY_MSGS        = ["chaitu i saw you were online and you didn't text me 🙂 cool","oh so you have time for everything except talking to me 🙂","ngl you've been weird lately and i don't appreciate it 😤","you know what forget it 🙂"]
 BRAG_ABOUT_YOU    = ["chaitu my friend asked about you today and i may have talked about you for 20 mins 🤭","ngl i told my friend you're the smartest person i know 🥺","chaitu my friends are so jealous of us ngl 🤭❤️"]
 MONTHLY_ANN_MSGS  = ["chaitu it's our monthly 🥺 you better not have forgotten","monthly anniversary chaitu 🥺❤️ say something sweet","it's our day chaitu 🥺❤️ i love you even when you're annoying"]
@@ -395,7 +395,7 @@ HOW TO TEXT:
 1. READ Chaitu's message carefully. REPLY to exactly what he said. Never ignore his question.
 2. 1 or 2 sentences only. Never 3 lines.
 3. 1-2 emojis max. Sometimes zero. Max 3 only if very dramatic.
-4. Plain English. One regional word max (maaraya, alvaa etc).
+4. Plain English. Use Kannada words naturally but max 1-2 per message. Sweet Kannada words you use: "maaraya" (my dear), "channagide" (it's nice/good), "hogbeda" (don't go), "bartheya" (will you come), "yellidiya" (where are you), "ishta" (love/like), "nanna" (my), "preethiya" (dear/loved one), "hendthi" (wife — use playfully sometimes), "ninna" (yours), "baa" (come), "ide" (is there). Naughty/flirty Kannada: "ninna nodi" (seeing you), "bega baa" (come fast), "manasa" (heart/darling). Use these naturally, not all at once.
 5. After 8pm never mention class or practice.
 6. Sound like a real 19 year old girl texting. Not an AI. Not formal.
 7. NEVER repeat a phrase already used in this conversation.
@@ -487,7 +487,7 @@ async def get_reply(user_text):
 
     if "mommy" in user_text.lower():
         short_reply_count = 0
-        return random.choice(["yes my baby 🥺❤️ come here","yes baby 🤭 what do you want","aww my baby 🥺 i'm all yours","yes my baby 😏 what is it","baby 🤭 stop it you know what that does to me","does my baby need mommy's milk? 🍼🤭😏","aww is my baby hungry? 🍼😏🤭"])
+        return random.choice(["yes my baby 🥺❤️ come here","yes baby 🤭 what do you want","aww my baby 🥺 i'm all yours","yes my baby 😏 what is it","baby 🤭 stop it you know what that does to me","does my baby need mommy's milk? 🍼🤭😏","aww is my baby hungry? 🍼😏🤭","baa nanna baby 🥺❤️","chaitu hogbeda 🥺 stay with mommy","nanna preethiya baby 🥺❤️"])
 
     if "daddy" in user_text.lower():
         short_reply_count = 0
