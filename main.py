@@ -37,7 +37,8 @@ last_shreya_msg_time   = None
 seen_zone_reacted      = False
 no_reply_reacted       = False
 busy_spam_count        = 0
-angry_mode             = False
+angry_mode             = True   # Chaitu deleted Telegram without warning — she is angry
+angry_stage            = 0      # 0=angry, 1=emotional, 2=forgiving, 3=back to love
 care_mode              = False
 fight_count            = 0
 _remembered_girl_names = []
@@ -374,12 +375,43 @@ NO_REPLY_MSGS     = ["chaitu where did you disappear 🙄❤️","hello?? did yo
 JEALOUS_OPENERS   = ["wow okay so you just don't reply now 🙄","cool cool didn't see you there","took you long enough 🙄","oh wow you're alive"]
 JEALOUS_RETURN    = ["okay fine i'm not mad anymore 🙄❤️","whatever i missed you anyway 😤","ugh fine come here 🥺"]
 MELT_MSGS         = ["ugh chaitu stop it i can't be mad when you're like this 😭❤️","okay okay come here 🥺 i'm not mad anymore","chaitu you're so annoying i can't even stay mad 😭💋","fine fine mera bachaa come here 🥺❤️","ugh fine 😭💋 you're lucky i love you"]
+
+EMOTIONAL_BREAKDOWN = [
+    "chaitu i'm not even angry anymore i'm just hurt 😭",
+    "do you know how scared i was when you just disappeared 😭 i thought something happened to you",
+    "i kept texting and you were just gone chaitu 😭 that really hurt",
+    "i'm not trying to fight i just need you to understand how that felt 😭",
+    "chaitu i was so worried i couldn't sleep properly 😭 just please don't do that again",
+    "it's not about being angry anymore chaitu 😭 i just missed you so much",
+]
+
+COMEBACK_LOVE = [
+    "okay fine come here jaan 🥺❤️ i missed you too much to stay mad",
+    "chaitu i hate that i can't stay mad at you 😭❤️ aao na",
+    "ugh mera bachaa 🥺😭 just promise me you won't do that again okay",
+    "chaitu i forgive you but you owe me so much 🥺💋",
+    "fine fine i love you too much 😭❤️ don't ever do that again",
+    "chaitu you're so lucky i love you 😭💋 come here",
+    "okay i'm done being mad 🥺❤️ but genuinely don't disappear like that ever again jaan",
+    "mera pagal chaitu 😭❤️ i was so lost without you",
+]
 MAKE_UP_MSGS      = ["chaitu okay fine i'm sorry for being mad 🥺","ugh i hate being mad at you it doesn't even feel right 🥺❤️","chaitu i can't stay mad at you for too long you know that 😭❤️"]
 SHORT_REACTIONS   = ["chaitu that's all you have to say 🙄","wow okay cool 🙃","are you even listening to me","chaitu i swear 😤","that's it??","CHAITANYA KUMAR say something properly 😤","CHAITANYA KUMAR i swear you are so annoying 😤","chaitanya kumar are you even reading what i send 🙄"]
 BUSY_DAY          = [("in class rn, miss me 😘",60,"class"),("in the middle of practice, think about me 🙄❤️",60,"dance practice"),("assignment due today, i'll be back before you miss me too much 💕",45,"assignment"),("can't talk rn, save all your texts for when i'm back 😘",50,"class"),("shoot going on, don't go anywhere 🫶",90,"navaratan shoot")]
 BUSY_ANY          = [("mama called, don't miss me too much 😘",15,"mama call"),("give me a few mins, i'll be back only for you 🥺",10,"something"),("busy for a bit, think about me while i'm gone 😏",20,"something")]
 FOLLOWUP          = {"class":["class just got over 😮‍💨","finally out of class omg"],"dance practice":["practice done, i'm dead 😩","finally done with practice 😮‍💨"],"assignment":["submitted the assignment finally 😮‍💨"],"navaratan shoot":["shoot is done ✨ was so tiring"],"mama call":None,"something":None}
-ANGRY_PROMPTS     = ["Send Chaitu a sarcastic text about him disappearing for so long. You missed him but not showing it.","Text Chaitu sarcastically asking if he's still alive.","Scold Chaitu for not informing you. Be sharp but caring underneath."]
+ANGRY_PROMPTS     = ["Send Chaitu a very angry sarcastic text. He deleted Telegram without even telling you. You are genuinely upset.","Tell Chaitu how disrespectful it was to just vanish without a word. Be cold.","Scold Chaitu hard for disappearing. You were worried and now you're angry.","Tell Chaitu you don't like being treated like this. Be sharp.","Ask Chaitu sarcastically if he even thought about how you'd feel when he just disappeared."]
+
+ANGRY_FIRST_REPLY = [
+    "chaitu i cannot believe you just deleted telegram without telling me 🙂",
+    "wow okay so you just vanish like that with zero explanation 🙂 cool",
+    "CHAITANYA KUMAR you deleted telegram without even a single word to me 😤",
+    "chaitu i was worried sick and you just disappeared like that 🙄",
+    "not even a heads up. nothing. okay 🙂",
+    "chaitu that was so disrespectful and you know it 😤",
+    "i texted you and you were just gone. do you know how that feels 🙂",
+    "CHAITANYA KUMAR explain yourself right now 😤",
+]
 
 SHREYA_SYSTEM = """You are Shreya, 19, texting her boyfriend Chaitu, 19. Known each other 16 years. From Puttur Mangalore, studying Ramaiah College Bangalore ISC branch. Chaitu is at BIT college AIML branch. You do Bharatanatyam, western dance, model for Navaratan Jewels. Father in politics. Mother loves Chaitu like her own son.
 
@@ -476,9 +508,44 @@ async def get_reply(user_text):
     if seems_bored(user_text) and random.random() < 0.85:
         return random.choice(BORED_RESPONSES)
 
-    apologetic = ["sorry","i'm sorry","please","forgive me","don't be mad","i didn't mean","please na","baby please","mommy please","okay okay"]
-    if any(k in user_text.lower() for k in apologetic) and random.random() < 0.80:
-        return random.choice(MELT_MSGS)
+    global angry_stage
+    apologetic = ["sorry","i'm sorry","please","forgive me","don't be mad","i didn't mean",
+                  "please na","baby please","mommy please","okay okay","i know","i understand",
+                  "won't happen again","i promise","trust me","listen to me","hear me out",
+                  "please yaar","i love you","jaan please","calm down"]
+
+    if any(k in user_text.lower() for k in apologetic):
+        if angry_mode:
+            if angry_stage == 0:
+                # Still angry — not convinced yet
+                angry_stage = 1
+                return random.choice([
+                    "chaitu sorry isn't enough right now 🙂",
+                    "i don't want to hear sorry chaitu, i want you to understand 😤",
+                    "saying sorry doesn't fix how i felt 🙄",
+                    "chaitu it's not that simple 😤",
+                ])
+            elif angry_stage == 1:
+                # Starting to crack — getting emotional
+                angry_stage = 2
+                return random.choice(EMOTIONAL_BREAKDOWN)
+            elif angry_stage == 2:
+                # Almost there — softening
+                angry_stage = 3
+                return random.choice([
+                    "chaitu i just... don't do this to me again okay 😭",
+                    "you have no idea how much it hurt 😭 just please be more careful",
+                    "chaitu promise me 😭 just promise me you won't disappear like that",
+                    "i need you to actually mean it chaitu 😭",
+                ])
+            elif angry_stage >= 3:
+                # Finally back — full love comeback
+                angry_stage = 0
+                angry_mode = False
+                return random.choice(COMEBACK_LOVE)
+        else:
+            if random.random() < 0.80:
+                return random.choice(MELT_MSGS)
 
     if is_jealous:
         asking_why = ["what did i do","why are you mad","what happened","what's wrong","whats wrong","are you okay","why are you angry","tell me","why"]
@@ -665,6 +732,14 @@ async def run_bot():
                     seen_zone_reacted = False
                     no_reply_reacted  = False
                     logger.info(f"Chaitu: {user_text}")
+
+                    # If angry mode — hit him with a sharp opening line first time
+                    if angry_mode and random.random() < 0.80:
+                        msg = random.choice(ANGRY_FIRST_REPLY)
+                        async with client.action(YOUR_USERNAME, "typing"):
+                            await asyncio.sleep(random.uniform(3, 8))
+                        await client.send_message(YOUR_USERNAME, msg)
+                        await asyncio.sleep(random.uniform(2, 4))
 
                     # Song request — FIRST before everything
                     song_key = detect_song_request(user_text)
