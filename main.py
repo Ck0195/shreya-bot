@@ -37,7 +37,7 @@ last_shreya_msg_time   = None
 seen_zone_reacted      = False
 no_reply_reacted       = False
 busy_spam_count        = 0
-angry_mode             = True   # Chaitu deleted Telegram without warning — she is angry
+angry_mode             = False
 angry_stage            = 0      # 0=angry, 1=emotional, 2=forgiving, 3=back to love
 care_mode              = False
 fight_count            = 0
@@ -352,6 +352,17 @@ OVERLOADED_LOVE_MSGS=["mera bachaa 🥺❤️ i love you so much sometimes it's 
 PROUD_MSGS        = ["ngl i'm actually really proud of you chaitu","chaitu you don't know how proud i am of you sometimes 🥺","you're doing so well and i just want you to know that","chaitu you're going to go so far i just know it"]
 ROAST_MSGS        = ["chaitu you are such a mess and somehow i still like you 💀","ngl you are the most chaotic person i know 😂","how are you this dumb and this cute at the same time 😂","chaitu you are a whole disaster and i mean that lovingly 💀"]
 FIGHT_STARTERS    = ["chaitu you never initiate conversations anymore, i always have to text first 🙄","ngl you've been kind of dry lately and i don't like it 😤","chaitu do you even miss me or is it just me 🙄","ngl i feel like you take me for granted sometimes 😤","chaitu i'm not mad i'm just disappointed 🙂","chaitu kya kar rahe ho 🙄 why do i always have to text first","pagal ho kya 😤 you're testing my patience","acha hai 🙂 so you're just going to ignore me then"]
+
+DELETED_TEASE_MSGS = [
+    "chaitu be honest, did you delete telegram because you found someone 🙂",
+    "ngl i'm still a little suspicious about why you deleted it so suddenly 🙂",
+    "chaitu swear on me there was no other reason you deleted telegram 🙂",
+    "okay but like why did you actually delete it 🙂 i'm just asking",
+    "found someone better and needed to hide the evidence? 🙂 asking for a friend",
+    "chaitu you can tell me the truth you know 🙂 was there someone",
+    "ngl if i found out there was another reason i'd lose it 🙂",
+    "chaitu i trust you but also why did you delete it so randomly 🙂",
+]
 PETTY_MSGS        = ["chaitu i saw you were online and you didn't text me 🙂 cool","oh so you have time for everything except talking to me 🙂","ngl you've been weird lately and i don't appreciate it 😤","you know what forget it 🙂"]
 BRAG_ABOUT_YOU    = ["chaitu my friend asked about you today and i may have talked about you for 20 mins 🤭","ngl i told my friend you're the smartest person i know 🥺","chaitu my friends are so jealous of us ngl 🤭❤️"]
 MONTHLY_ANN_MSGS  = ["chaitu it's our monthly 🥺 you better not have forgotten","monthly anniversary chaitu 🥺❤️ say something sweet","it's our day chaitu 🥺❤️ i love you even when you're annoying"]
@@ -646,6 +657,7 @@ def get_random_prompts():
     if random.random() < 0.06: return OVERLOADED_LOVE_MSGS
     if random.random() < 0.08: return HOLIDAY_MEMORY_MSGS
     if random.random() < 0.08: return FIGHT_STARTERS + PETTY_MSGS
+    if random.random() < 0.10: return DELETED_TEASE_MSGS
     if random.random() < 0.08: return SONGS_REELS
     if random.random() < 0.08: return BRAG_ABOUT_YOU
     if random.random() < 0.08: return PROUD_MSGS + ROAST_MSGS
@@ -764,7 +776,7 @@ async def run_bot():
                         await asyncio.sleep(random.uniform(10, 30))
                         await send_reaction(client, event)
 
-                    read_delay = random.uniform(5, 15) if wants_to_talk(user_text) else random.uniform(15, 45)
+                    read_delay = random.uniform(20, 35) if wants_to_talk(user_text) else random.uniform(25, 55)
                     logger.info(f"Waiting {read_delay:.0f}s")
                     await asyncio.sleep(read_delay)
 
