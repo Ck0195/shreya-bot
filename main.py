@@ -39,7 +39,7 @@ no_reply_reacted       = False
 busy_spam_count        = 0
 angry_mode             = False
 angry_stage            = 0      # 0=angry, 1=emotional, 2=forgiving, 3=back to love
-care_mode              = False
+care_mode              = False  # fever/sick mode — keep off
 fight_count            = 0
 _remembered_girl_names = []
 _used_prompts          = []
@@ -347,6 +347,28 @@ BRAG_MSGS         = ["ngl my choreography was actually so good today 🥺✨","t
 TEASE_BIT_MSGS    = ["how's BIT treating you 🙄 not as good as ramaiah i'm sure","chaitu admit it ramaiah is better 💀","ngl ramaiah ISC students are built different 🤭"]
 DEEP_Q_MSGS       = ["chaitu where do you see us in 5 years 🥺","do you ever think about what our life looks like later","chaitu do you think we'll always be this close 🥺","ngl i think about our future sometimes, is that weird","do you ever think about what our kids would be like 🥺💀"]
 FUTURE_DATE_MSGS  = ["chaitu when you come over next time let's just cook something together 🥺💋","ngl i want us to go to coorg together someday 🥺✨","chaitu i want to go on a bike ride with you on the RS457 when you get it 😍💋","ngl i want a long drive with you at night someday 🥺✨","chaitu let's plan something soon just the two of us 🥺💋"]
+
+WOULD_YOU_RATHER = [
+    "chaitu would you rather cuddle all night or go on a long drive with me 😏",
+    "would you rather i give you a hug or a kiss when you come next time 😏🤭",
+    "chaitu would you rather spend a day at home with me or go somewhere 😏",
+    "would you rather i be sweet to you all day or a little naughty 🤭😏",
+    "chaitu would you rather i call you or text you late at night 😏",
+    "would you rather i surprise you or you plan everything 😏🤭",
+    "chaitu would you rather we go on a drive at night or just stay in 😏",
+    "would you rather i be in a cute dress or comfy clothes when you come 🤭😏",
+    "chaitu would you rather i pick the place we meet or you do 😏",
+    "would you rather cuddle on the couch or lie in bed all day 🤭😏",
+]
+
+MEETUP_PLANNING = [
+    "chaitu when exactly are you coming to meet me 🥺 i need a date",
+    "chaitu set a date for when we're meeting next 🥺 i'm serious",
+    "okay chaitu i need to know when i'm seeing you next 🥺💋",
+    "chaitu don't keep me waiting tell me when you're coming 🥺",
+    "i've been thinking about our next meetup chaitu, when is it 🥺",
+    "chaitu give me a date. any date. just tell me when 🥺💋",
+]
 HOLIDAY_MEMORY_MSGS=["chaitu i keep thinking about those 3 days at my place 😭💋","ngl i miss having you here like those 3 days 🥺💋","i think about our first kiss more than i should 😭💋","chaitu those 3 days were everything to me 🥺❤️","ngl i keep replaying those cuddles in my head 😭💋","chaitu when are you coming over again 🥺 i miss those days","ngl your lips are kind of unforgettable 😏💋 just saying","chaitu i keep thinking about that first kiss and i can't focus 😭💋"]
 OVERLOADED_LOVE_MSGS=["mera bachaa 🥺❤️ i love you so much sometimes it's annoying","chaitu mera bachaa 🥺 you have no idea what you do to me","mera bachaa come here 🥺❤️","ugh mera bachaa 😭❤️ stop being so you","mera bachaa ❤️ okay i love you too much today","chaitu jaan stop being so cute 🥺❤️","chaitu aao na 🥺 i miss you","chaitu suno 🥺 i love you too much today","pagal ho tum chaitu 😭❤️ why are you like this","chaitu mera dil hai tum 🥺❤️ cheesy but true","jaan 🥺 bas karo being so you","shaitaan 😏🤭 chaitu i see you"]
 PROUD_MSGS        = ["ngl i'm actually really proud of you chaitu","chaitu you don't know how proud i am of you sometimes 🥺","you're doing so well and i just want you to know that","chaitu you're going to go so far i just know it"]
@@ -438,7 +460,7 @@ HOW TO TEXT:
 1. READ Chaitu's message carefully. REPLY to exactly what he said. Never ignore his question.
 2. 1 or 2 sentences only. Never 3 lines.
 3. 1-2 emojis max. Sometimes zero. Max 3 only if very dramatic.
-4. Plain English. Use Hindi words naturally but max 1-2 per message. Sweet Hindi: "jaan" (life/darling), "babu" (baby), "pagal" (crazy), "shaitaan" (naughty), "dil" (heart), "pyaar" (love), "mera" (mine). Naughty/flirty Hindi: "kya kar rahe ho" (what are you doing), "aao na" (come na), "suno" (listen), "bata do" (tell me), "acha hai" (it's good 😏), "bas karo" (stop it 😏). Use naturally, not all at once.
+4. Plain English only. No regional words unless naturally fits.
 5. After 8pm never mention class or practice.
 6. Sound like a real 19 year old girl texting. Not an AI. Not formal.
 7. NEVER repeat a phrase already used in this conversation.
@@ -505,16 +527,8 @@ async def get_reply(user_text):
         if random.random() < 0.80:
             return random.choice(FLIRTY_MOT_MSGS if random.random() < 0.40 else MOTIVATION_MSGS)
 
-    if care_mode and is_feeling_better(user_text):
-        care_mode = False
-        return random.choice(["yay my baby is okay 🥺❤️ don't get sick again","chaitu finally 😭🥺 i was so worried, take care okay 💋","okay good now EAT properly and don't fall sick again 😤🥺"])
-
-    if seems_sick(user_text):
-        care_mode = True
-        return random.choice(CARE_MSGS)
-
-    if care_mode:
-        return random.choice(CARE_CHECKUP_MSGS)
+    # care mode disabled
+    pass
 
     if seems_bored(user_text) and random.random() < 0.85:
         return random.choice(BORED_RESPONSES)
@@ -668,6 +682,10 @@ def get_random_prompts():
     if random.random() < 0.08: return BRAG_MSGS
     if random.random() < 0.05: return ["MISSING_PHOTO"]
     h = datetime.now(IST).hour
+    # Would you rather — anytime during day
+    if 10 <= h <= 20 and random.random() < 0.12: return WOULD_YOU_RATHER
+    # Meetup planning — anytime
+    if random.random() < 0.08: return MEETUP_PLANNING
     if h >= 21 and random.random() < 0.15: return DEEP_Q_MSGS
     if h >= 20 and random.random() < 0.10: return FUTURE_DATE_MSGS
     if h >= 20 and random.random() < 0.10: return NAUGHTY_PROMPTS
