@@ -263,7 +263,7 @@ html,body{height:100%;font-family:'Inter',sans-serif;background:var(--bg);color:
       <div id="header-name">Shreya</div>
       <div id="header-status">online</div>
     </div>
-    <div id="mood-badge">😊 <span id="mood-label">happy</span></div>
+    <div id="mood-badge"><span id="mood-emoji">😊</span> <span id="mood-label">happy</span></div>
     <div id="header-actions">
       <button class="hbtn" onclick="clearChat()" title="Clear chat">🗑</button>
       <button class="hbtn" onclick="resetKey()" title="Change API key">🔑</button>
@@ -316,8 +316,6 @@ let lastReplyTime = null;
 let angryMode = false;
 let angryStage = 0;
 let careMode = false;
-let isBusy = false;
-let busyUntil = null;
 let recentReplies = [];
 let todayPlan = JSON.parse(localStorage.getItem('shreya_plan') || 'null');
 let conversationHistory = JSON.parse(localStorage.getItem('shreya_history') || '[]');
@@ -352,7 +350,7 @@ function setMood(m) {
   mood = m;
   localStorage.setItem('shreya_mood', m);
   document.getElementById('mood-label').textContent = m;
-  document.getElementById('mood-badge').children[0].textContent = MOOD_EMOJIS[m] || '😊';
+  document.getElementById('mood-emoji').textContent = MOOD_EMOJIS[m] || '😊';
 }
 
 // ── Canned responses ──────────────────────────────────────────────────────
@@ -636,7 +634,7 @@ function addMins(timeStr, mins) {
 }
 
 // ── Process message ────────────────────────────────────────────────────────
-async function processMessage(text) {
+async function processMessage(text, gapMs) {
   const tl = text.toLowerCase().trim();
 
   // Memory passthrough
@@ -679,7 +677,9 @@ async function processMessage(text) {
 
   // Task update
   if (isTaskUpdate(text)) {
-    return handleTaskUpdate(text);
+    const taskReply = handleTaskUpdate(text);
+    if (taskReply) return taskReply;
+    // no matching/active task for this update — fall through to normal reply handling
   }
 
   // Night review
@@ -716,8 +716,17 @@ async function processMessage(text) {
     if (Math.random() < 0.7) return pick(MELT_MSGS);
   }
 
+  // Long disappearance → angry mode (checked before plain jealousy)
+  if (gapMs && gapMs > 14400000 && !angryMode) {
+    angryMode = true;
+    angryStage = 0;
+    isJealous = false;
+    setMood('annoyed');
+    return pick(ANGRY_OPENERS);
+  }
+
   // Late reply → jealous
-  if (lastReplyTime && Date.now() - lastReplyTime > 1800000 && !isJealous) {
+  if (gapMs && gapMs > 1800000 && !isJealous && !angryMode) {
     isJealous = true;
     setMood('jealous');
     return pick(JEALOUS_OPENERS);
@@ -781,16 +790,19 @@ async function processMessage(text) {
 
 // ── Plan handlers ──────────────────────────────────────────────────────────
 async function handlePlanner(text) {
-  showTyping();
   try {
     const parsed = await extractAndBuildPlan(text);
     const schedule = buildSchedule(parsed);
     if (!schedule) return 'chaitu tell me what you need to do today and i\'ll sort it 🥺';
     savePlan(schedule);
-    // Check feasibility
+    // Check feasibility against the actual available window, not a guess
     const tasks = parsed?.tasks || [];
     const total = tasks.reduce((s,t)=>s+(t.duration_mins||60),0);
-    const available = 7*60; // rough
+    const from = parsed?.available_from || '16:00';
+    const until = parsed?.available_until || '23:00';
+    const [fh, fm] = from.split(':').map(Number);
+    const [uh, um] = until.split(':').map(Number);
+    const available = (uh*60+um) - (fh*60+fm);
     if (total > available + 120) {
       const overflow = `bro 😭 you're trying to fit ${Math.round(total/60)} hours of work into one day. i'm not doing that to you.`;
       addHerMessage(overflow);
@@ -888,7 +900,6 @@ function addMyMessage(text) {
   conversationHistory.push({role:'user',content:text});
   if (conversationHistory.length > MAX_HISTORY*2) conversationHistory = conversationHistory.slice(-MAX_HISTORY);
   localStorage.setItem('shreya_history', JSON.stringify(conversationHistory));
-  lastReplyTime = Date.now();
 }
 
 function showTyping() {
@@ -938,6 +949,11 @@ async function sendMessage() {
   input.value = '';
   input.style.height = 'auto';
 
+  // Capture the gap since the user's previous message BEFORE overwriting lastReplyTime,
+  // so jealousy/anger checks measure real elapsed time instead of ~0ms.
+  const gapMs = lastReplyTime ? Date.now() - lastReplyTime : null;
+  lastReplyTime = Date.now();
+
   addMyMessage(text);
   const delay = wantsToTalk(text) ? rand(1200,2500) : rand(2000,4500);
   await sleep(delay);
@@ -946,7 +962,7 @@ async function sendMessage() {
   try {
     const typingDelay = rand(1500, 3500);
     const [reply] = await Promise.all([
-      processMessage(text),
+      processMessage(text, gapMs),
       sleep(typingDelay)
     ]);
     hideTyping();
