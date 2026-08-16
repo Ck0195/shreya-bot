@@ -174,6 +174,11 @@ busy_spam_count        = 0
 _used_prompts          = []
 _remembered_girl_names = []
 
+# ── PLANNER CONVERSATION STATE ──────────────────────────────────────────────
+# Tracks whether we're in the middle of gathering plan info from Chaitu
+planner_conv_stage   = 0   # 0=idle, 1=asked what he has, 2=asked about energy, 3=ready to build
+planner_gathered     = {}  # collected info: {"tasks_text": ..., "tired": bool, "time": ...}
+
 # ── MOOD ───────────────────────────────────────────────────────────────────────
 MOODS = ["happy","playful","loving","normal","teasing","annoyed","jealous","tired","excited","concerned","proud","chill"]
 
@@ -962,8 +967,14 @@ async def get_random_message(nudge=False, meal=None):
             db_log_proactive("goal_reminder")
             return random.choice(FLIRTY_MOT_MSGS if random.random() < 0.4 else MOTIVATION_MSGS)
         cat, pool = get_proactive_pool()
-        # direct messages (not prompts — they don't end with a period)
-        if pool and pool[0] and not pool[0].rstrip().endswith("."):
+        # Direct messages (contain emojis or are short — not LLM prompts)
+        # Prompts are long sentences ending with a period telling Shreya what to do
+        first = pool[0] if pool else ""
+        is_direct = first and (
+            any(e in first for e in ["😭","🥺","❤️","😍","😤","💀","🤭","😏","✨","💕","😂","🙄","😩","🫶","💋","😘"])
+            or len(first.split()) <= 8
+        )
+        if is_direct:
             msg = random.choice(pool)
             db_log_proactive(cat)
             return msg
@@ -1013,6 +1024,144 @@ async def send_song(client, username, key):
     except Exception as e:
         logger.error(f"Song error: {e}")
         return False
+
+# ── CONVERSATIONAL PLANNER HANDLER ────────────────────────────────────────────
+async def handle_planner_conv(user_text, event):
+    """Multi-turn conversational planner. Asks what Chaitu has, checks his energy, THEN builds."""
+    global planner_conv_stage, planner_gathered
+
+    tl = user_text.lower().strip()
+
+    # ── Stage 0 → 1: First trigger — ask what he has today ──────────────────
+    if planner_conv_stage == 0:
+        planner_gathered = {}
+        planner_conv_stage = 1
+
+        # Check if he already gave tasks in the same message (e.g. "plan my day i have college 9-4 dsa gym")
+        has_tasks_inline = any(k in tl for k in ["college","class","dsa","assignment","gym","project","study","coding","lecture","work"])
+        if has_tasks_inline:
+            # He gave tasks — skip to energy question
+            planner_gathered["tasks_text"] = user_text
+            planner_conv_stage = 2
+            openers = [
+                "okay i got it 😭 but are you tired or do you actually have energy today",
+                "okay noted 🥺 first tell me — are you tired or feeling okay today",
+                "got it. but how are you actually feeling rn? tired? or good to go",
+                "okay before i sort this — how are you feeling today? tired or okay",
+            ]
+            return random.choice(openers)
+        else:
+            # He just said "plan my day" — ask what he has
+            openers = [
+                "come here 😭 tell me everything you have to do today",
+                "okay baby tell me what's on your list today 🥺",
+                "okayyy what do you have going on today, tell me everything",
+                "tell me what you have to do today and i'll sort it 🥺",
+                "come on then 😭 what's the plan — what do you actually have today",
+            ]
+            return random.choice(openers)
+
+    # ── Stage 1: He told us what he has — ask about energy ──────────────────
+    elif planner_conv_stage == 1:
+        planner_gathered["tasks_text"] = user_text
+        planner_conv_stage = 2
+
+        energy_qs = [
+            "okay i got all of that 🥺 now tell me — are you tired or do you have energy today",
+            "okay noted 😭 but are you actually feeling okay or are you exhausted",
+            "got it. how are you feeling rn though — tired or good",
+            "noted 🥺 one thing — how tired are you today honestly",
+            "okay i see it 😭 but first — how are you feeling? tired? stressed? or actually okay",
+        ]
+        return random.choice(energy_qs)
+
+    # ── Stage 2: He told us energy — optionally ask time, then build ────────
+    elif planner_conv_stage == 2:
+        # Parse energy from response
+        is_tired = any(k in tl for k in ["tired","exhausted","dead","not okay","bad","rough","sleepy","no energy","drained","stressed"])
+        is_fine  = any(k in tl for k in ["fine","good","okay","okay","great","energy","ready","let's go","alright","not bad"])
+        planner_gathered["tired"] = is_tired
+
+        # Check if we know free time
+        has_time_info = any(k in tl for k in ["free at","free from","after","from","till","until","available"])
+        if not has_time_info and not planner_gathered.get("tasks_text",""):
+            # We still need tasks text
+            planner_conv_stage = 1
+            return "wait chaitu tell me what you actually need to do first 😭"
+
+        planner_conv_stage = 3  # ready to build
+
+        tired_ack = ""
+        if is_tired:
+            tired_ack = random.choice([
+                "okay i hear you 😭 i'm not going to overload you then. ",
+                "okay tired chaitu gets a lighter plan 🥺 ",
+                "noted. tired = we're being realistic today. ",
+            ])
+        elif is_fine:
+            tired_ack = random.choice([
+                "okay good 😤 then we're actually doing this. ",
+                "okay energy mode it is 😍 ",
+                "",
+            ])
+
+        build_msg = random.choice([
+            "give me a second i'm sorting your day 😭",
+            "okay okay i'm making it 🥺 one sec",
+            "hold on i'm planning this for you 😤",
+            "okay i'm on it 😭 one minute",
+        ])
+
+        # Build the actual plan now
+        tasks_text = planner_gathered.get("tasks_text", user_text)
+        tired_flag = planner_gathered.get("tired", False)
+
+        # Send the "i'm working on it" message first
+        await event.reply(tired_ack + build_msg)
+
+        # Now build
+        parsed = await extract_tasks(tasks_text)
+
+        # If tired — reduce duration of hard tasks by 20%, remove lowest priority
+        if tired_flag and parsed and parsed.get("tasks"):
+            for t in parsed["tasks"]:
+                if t.get("energy") == "high":
+                    t["duration_mins"] = int(t.get("duration_mins", 90) * 0.80)
+            parsed["tasks"].sort(key=lambda t: {"high":0,"medium":1,"low":2}.get(t.get("priority","medium"),1))
+            if len(parsed["tasks"]) > 3:
+                parsed["tasks"] = parsed["tasks"][:3]  # cap at 3 tasks when tired
+
+        schedule = build_schedule(parsed) if parsed else None
+
+        planner_conv_stage = 0
+        planner_gathered = {}
+
+        if not schedule:
+            return "chaitu even i can't fix that amount of work in one day 😭 tell me what absolutely must be done today"
+
+        db_save_plan(today_str(), schedule)
+
+        plan_text = "\n".join(
+            f"{b['time']}: {b['name']}"
+            for b in schedule if b.get("time")
+        )
+        tired_note = "i kept it lighter because you're tired 🥺\n\n" if tired_flag else ""
+        prompt = f"""You are Shreya presenting this day plan to Chaitu through Telegram. Sound casual, warm, natural.
+Start with something like "okay baby i sorted your day ❤️" or "okay here it is 😭".
+{tired_note}Present each block on its own line with the time and task. Plain text, no markdown, no bullet points.
+End with something sweet like "you're done, chill with me ❤️" or "i'll check on you later 😤".
+Keep it under 15 lines.
+
+Plan:
+{plan_text}"""
+        reply = await call_groq_raw(prompt, max_tokens=250, temperature=0.85)
+        return reply or plan_text
+
+    # ── Fallback: reset ──────────────────────────────────────────────────────
+    planner_conv_stage = 0
+    planner_gathered = {}
+    return None
+
 
 # ── BOT ────────────────────────────────────────────────────────────────────────
 async def run_bot():
@@ -1093,13 +1242,13 @@ async def run_bot():
                         await asyncio.sleep(random.uniform(10, 30))
                         await send_reaction(client, event)
 
-                    # ── Day planner — needs client access ─────────────────
-                    if is_planner_request(user_text):
-                        delay = random.uniform(5, 12)
+                    # ── Day planner — conversational gathering ─────────────
+                    if is_planner_request(user_text) or planner_conv_stage > 0:
+                        delay = random.uniform(8, 18) if wants_to_talk(user_text) else random.uniform(20, 40)
                         await asyncio.sleep(delay)
                         async with client.action(YOUR_USERNAME, "typing"):
-                            await asyncio.sleep(random.uniform(3, 7))
-                        reply = await handle_planner(user_text, client)
+                            await asyncio.sleep(random.uniform(2, 5))
+                        reply = await handle_planner_conv(user_text, event)
                         if reply:
                             await event.reply(reply)
                             last_shreya_msg_time = datetime.now(IST)
@@ -1155,7 +1304,7 @@ async def run_bot():
             async def send_proactive():
                 try:
                     now_h = datetime.now(IST).hour
-                    if now_h >= 20 or now_h < 8: return
+                    if now_h >= 23 or now_h < 8: return
                     if random.random() < 0.10:
                         await send_photo(client, YOUR_USERNAME, missing=True)
                         return
@@ -1304,7 +1453,7 @@ async def run_bot():
             def schedule_random():
                 for job in scheduler.get_jobs():
                     if job.id.startswith("rand_"): job.remove()
-                for total_min in random.sample(range(480, 1200), 10):
+                for total_min in random.sample(range(480, 1380), 22):
                     h, m = total_min // 60, total_min % 60
                     scheduler.add_job(lambda: asyncio.ensure_future(send_proactive()), "cron", hour=h, minute=m, id=f"rand_{h}_{m}")
 
