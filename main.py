@@ -444,8 +444,7 @@ HOW YOU TEXT:
 5. After 8pm NEVER mention class, college, or practice.
 6. Sound like a real 19-year-old girl texting. NOT an AI. NOT formal.
 7. Use ngl, lowkey, no bc, pls, i cant naturally sometimes.
-8. NEVER repeat phrases already used in this conversation: {avoid}
-9. When Chaitu calls you mommy: respond sweetly — "yes my baby 🥺❤️" or similar.
+8. When Chaitu calls you mommy: respond sweetly — "yes my baby 🥺❤️" or similar.
 
 PERSONALITY: Focused, confident, sassy. Slightly flirty in a tasteful way. Real girlfriend energy — caring but has her own life. Not clingy. Not controlling. Possessive but playful about it. Never sounds like AI. Never formal."""
 
@@ -464,33 +463,38 @@ def build_prompt(jealous=False, short_reply=False, angry=False, care=False, extr
     if care:                          extra += "IMPORTANT: Chaitu is sick/has fever. Be very caring and sweet. Send forehead kisses.\n"
     if extra_ctx:                     extra += extra_ctx
 
-    avoid_str = " | ".join(recent_replies[-5:]) if recent_replies else "none"
     return SHREYA_SYSTEM.format(
         memory=db_get_memory_context() or "No specific memories yet.",
         time=get_time_context(),
         mood=current_mood,
         mood_desc=mood_context(),
         extra=extra,
-        avoid=avoid_str,
     )
 
 # ── LLM CALLS ──────────────────────────────────────────────────────────────────
-async def call_groq(messages, jealous=False, short_reply=False, angry=False, care=False, extra_ctx="", max_tokens=70, temperature=1.05):
+async def call_groq(messages, jealous=False, short_reply=False, angry=False, care=False, extra_ctx="", max_tokens=70, temperature=0.88):
     last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
     system = build_prompt(jealous, short_reply, angry, care, extra_ctx)
     if last_user:
-        system += f'\n\nChaitu just said: "{last_user}"\nRespond ONLY to what he said. 1–2 lines max.'
+        system += f'\n\nChaitu just said: "{last_user}"\nRespond ONLY to what he said. 1–2 lines max. Be natural.'
+    # Inject avoid as clean separate instruction, only substantive recent replies
+    avoid_list = [r for r in recent_replies[-4:] if len(r.split()) > 3]
+    if avoid_list:
+        system += "\n\nDo NOT repeat or rephrase any of these: " + " | ".join(avoid_list)
     body = {
         "model": "llama-3.1-8b-instant",
         "messages": [{"role":"system","content":system}] + messages,
         "max_tokens": max_tokens, "temperature": temperature,
-        "frequency_penalty": 1.1, "presence_penalty": 0.8,
+        "frequency_penalty": 0.5, "presence_penalty": 0.3,
     }
     try:
         async with aiohttp.ClientSession() as sess:
             async with sess.post(GROQ_URL, json=body, headers={"Authorization":f"Bearer {GROQ_API_KEY}","Content-Type":"application/json"}) as resp:
                 data = await resp.json()
-                return data["choices"][0]["message"]["content"].strip()
+                raw = data["choices"][0]["message"]["content"].strip()
+                # If model returns multiple lines, keep only the first 2
+                lines = [l.strip() for l in raw.split("\n") if l.strip()]
+                return " ".join(lines[:2]) if lines else raw
     except Exception as e:
         logger.error(f"Groq error: {e}")
         return None
@@ -922,8 +926,9 @@ async def get_reply(user_text):
     reply = await call_groq(conversation_history, jealous=is_jealous, short_reply=(short_reply_count>=2), angry=angry_mode, care=care_mode, extra_ctx=extra_ctx)
     if not reply: return None
 
-    recent_replies.append(reply)
-    if len(recent_replies) > 8: recent_replies.pop(0)
+    if reply and len(reply.split()) > 3:
+        recent_replies.append(reply)
+        if len(recent_replies) > 8: recent_replies.pop(0)
     conversation_history.append({"role":"assistant","content":reply})
     return reply
 
