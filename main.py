@@ -608,6 +608,7 @@ async def call_groq(messages, jealous=False, short_reply=False):
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body, headers=headers) as resp:
                 data = await resp.json()
+                logger.info(f"Groq raw response: {str(data)[:200]}")
                 reply = data["choices"][0]["message"]["content"].strip()
         # Emoji-only prevention
         clean = ''.join(c for c in reply if c.isalpha() or c.isdigit())
