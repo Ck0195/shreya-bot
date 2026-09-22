@@ -609,17 +609,11 @@ async def call_groq(messages, jealous=False, short_reply=False):
             async with session.post(url, json=body, headers=headers) as resp:
                 data = await resp.json()
                 reply = data["choices"][0]["message"]["content"].strip()
-        # Emoji-only prevention — regenerate if no real words
-        import unicodedata
-        words_only = ''.join(c for c in reply if unicodedata.category(c) not in ('So', 'Sm') and not c.isspace())
-        if len(words_only) < 4:
-            logger.info("Emoji-only reply detected — regenerating")
-            messages_retry = messages + [{"role": "assistant", "content": reply}, {"role": "user", "content": "please reply with actual words not just emojis"}]
-            body["messages"] = [{"role": "system", "content": system}] + messages_retry
-            async with aiohttp.ClientSession() as session2:
-                async with session2.post(url, json=body, headers=headers) as resp2:
-                    data2 = await resp2.json()
-                    reply = data2["choices"][0]["message"]["content"].strip()
+        # Emoji-only prevention
+        clean = ''.join(c for c in reply if c.isalpha() or c.isdigit())
+        if len(clean) < 4:
+            logger.info("Emoji-only detected — using fallback")
+            reply = random.choice(["omg tell me more 🥺", "chaitu 😭 what happened", "wait what 😭", "okay i'm listening 🥺", "chaitu 🥺 go on"])
         return reply
     except Exception as e:
         logger.error(f"Groq error: {e}")
