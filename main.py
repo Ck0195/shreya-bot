@@ -31,6 +31,15 @@ def init_db():
             value TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS incidents(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person TEXT,
+            summary TEXT NOT NULL,
+            emotion TEXT DEFAULT 'neutral',
+            category TEXT DEFAULT 'general',
+            outcome TEXT,
+            created_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS goals(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             goal TEXT NOT NULL UNIQUE,
@@ -60,6 +69,8 @@ def init_db():
             sent_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_mem_cat ON memory(category);
+        CREATE INDEX IF NOT EXISTS idx_incidents_date ON incidents(created_at);
+        CREATE INDEX IF NOT EXISTS idx_incidents_person ON incidents(person);
         CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(date);
         """)
     logger.info("DB ready")
@@ -89,7 +100,179 @@ def db_get_memory_context():
     goals = db_get_goals()
     if goals:
         parts.append("[GOALS] " + " | ".join(g["goal"] for g in goals[:5]))
+    incidents = db_get_incident_context(limit=8)
+    if incidents:
+        parts.append("[INCIDENTS — IMPORTANT REAL-LIFE EVENTS]\n" + incidents)
     return "\n".join(parts)
+
+def db_add_incident(person, summary, emotion="neutral", category="general", outcome=""):
+    """Save a meaningful real-life incident so Shreya can remember it later."""
+    summary = (summary or "").strip()[:500]
+    person = (person or "").strip()[:120] or None
+    emotion = (emotion or "neutral").strip()[:40]
+    category = (category or "general").strip()[:60]
+    outcome = (outcome or "").strip()[:300] or None
+    if not summary:
+        return
+    with sqlite3.connect(DB_PATH) as c:
+        existing = c.execute(
+            "SELECT id FROM incidents WHERE summary=? AND created_at>?",
+            (summary, (datetime.now(IST) - timedelta(days=30)).isoformat())
+        ).fetchone()
+        if not existing:
+            c.execute(
+                """INSERT INTO incidents(person,summary,emotion,category,outcome,created_at)
+                   VALUES(?,?,?,?,?,?)""",
+                (person, summary, emotion, category, outcome, now_ist())
+            )
+
+def db_get_recent_incidents(limit=12, person=None):
+    with sqlite3.connect(DB_PATH) as c:
+        if person:
+            rows = c.execute(
+                """SELECT person,summary,emotion,category,outcome,created_at
+                   FROM incidents WHERE person LIKE ?
+                   ORDER BY created_at DESC LIMIT ?""",
+                (f"%{person}%", limit)
+            ).fetchall()
+        else:
+            rows = c.execute(
+                """SELECT person,summary,emotion,category,outcome,created_at
+                   FROM incidents ORDER BY created_at DESC LIMIT ?""",
+                (limit,)
+            ).fetchall()
+    return rows
+
+def db_get_incident_context(limit=8):
+    rows = db_get_recent_incidents(limit=limit)
+    if not rows:
+        return ""
+    parts = []
+    for person, summary, emotion, category, outcome, created_at in rows:
+        who = f" involving {person}" if person else ""
+        result = f"; outcome: {outcome}" if outcome else ""
+        parts.append(f"- {summary}{who} | emotion: {emotion} | type: {category}{result}")
+    return "\n".join(parts)
+
+def looks_like_incident(text):
+    """Cheap filter so we only spend an LLM call on messages that may describe an event."""
+    tl = text.lower()
+    if len(tl.split()) < 5:
+        return False
+    event_words = [
+        "today", "yesterday", "in class", "at college", "lecture", "prof", "professor",
+        "friend", "classmate", "roommate", "teacher", "sir", "ma'am", "someone",
+        "happened", "told me", "said to me", "did this", "did that",
+        "hurt me", "insulted me", "embarrassed me", "ignored me", "made fun of",
+        "bullied me", "argued with me", "fought with me", "helped me", "supported me",
+        "congratulated me", "surprised me", "made me happy", "made my day",
+        "proud of me", "won", "lost", "failed", "passed", "laughed", "cried",
+        "upset", "angry", "happy", "excited", "embarrassed", "humiliated",
+        "cheated", "lied to me", "backstabbed", "betrayed"
+    ]
+    return any(k in tl for k in event_words)
+
+async def extract_incident(user_text):
+    """Use the LLM only when the message looks like a meaningful real-life event."""
+    prompt = f"""Analyze this message from Chaitu and decide whether he is telling Shreya about a
+meaningful real-life incident/event that should be remembered for future conversations.
+
+Return ONLY valid JSON:
+{{
+  "is_incident": true,
+  "person": "person name or null",
+  "summary": "one short factual sentence describing what happened",
+  "emotion": "sad|angry|hurt|happy|excited|proud|embarrassed|neutral",
+  "category": "class|friend|family|college|achievement|conflict|funny|general",
+  "outcome": "short outcome if known, otherwise empty"
+}}
+
+Rules:
+- Do not invent names, motives, or facts.
+- If the message is only casual conversation, return is_incident=false.
+- Save events that are emotionally meaningful, surprising, funny, positive, or negative.
+- "Someone hurt me" should be remembered even if the exact person is unknown.
+- Keep summary under 35 words.
+
+Message:
+"{user_text}" """
+    raw = await call_groq_raw(prompt, max_tokens=180, temperature=0.1)
+    if not raw:
+        return None
+    try:
+        clean = raw.strip().replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean)
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.error(f"Incident parse error: {e}; raw={raw[:300]}")
+        return None
+
+async def handle_incident(user_text):
+    """Remember an incident and respond according to how Chaitu feels."""
+    if not looks_like_incident(user_text):
+        return None
+
+    data = await extract_incident(user_text)
+    if not data or not data.get("is_incident"):
+        return None
+
+    summary = str(data.get("summary") or "").strip()
+    if not summary:
+        return None
+
+    person = str(data.get("person") or "").strip()
+    if person.lower() in {"null", "none", "unknown"}:
+        person = ""
+    emotion = str(data.get("emotion") or "neutral").lower().strip()
+    category = str(data.get("category") or "general").lower().strip()
+    outcome = str(data.get("outcome") or "").strip()
+
+    db_add_incident(person, summary, emotion, category, outcome)
+
+    if emotion in {"sad", "hurt", "embarrassed"}:
+        set_mood("concerned", "Chaitu shared a painful incident")
+        reaction_instruction = """He is hurt. Console him first, validate how he feels, and make him
+feel safe and understood. Do not minimize it or immediately give a lecture."""
+    elif emotion == "angry":
+        set_mood("annoyed", "someone upset Chaitu")
+        reaction_instruction = """Someone upset him. Be protective and angry on his side. Mild,
+non-threatening insults/cursing toward the person are okay if natural, but never threaten violence
+or encourage revenge. Focus on supporting Chaitu."""
+    elif emotion in {"happy", "excited", "proud"}:
+        set_mood("excited", "Chaitu shared a happy incident")
+        reaction_instruction = """He is happy. Match his excitement genuinely and celebrate with him.
+Make it feel like his girlfriend is excited because he is excited."""
+    else:
+        set_mood("normal", "incident shared")
+        reaction_instruction = """React naturally to what happened and show that you actually listened."""
+
+    incident_context = db_get_incident_context(limit=8)
+    prompt = f"""You are Shreya talking to Chaitu.
+He just told you about a real-life incident:
+"{user_text}"
+
+Extracted memory:
+- Person: {person or "not specified"}
+- What happened: {summary}
+- Emotion: {emotion}
+- Type: {category}
+- Outcome: {outcome or "not specified"}
+
+{reaction_instruction}
+
+IMPORTANT:
+- Remember this incident for future conversations.
+- If he mentions the same person/event later, recognize the context naturally.
+- Do NOT say you stored this in a database.
+- Do NOT use the words "bro" or "bruh".
+- Sound like a real girlfriend, not an assistant.
+- 1-3 short sentences.
+- Respond to what happened, not to the JSON.
+- No threats, revenge plans, or instructions to harm anyone.
+
+Recent remembered incidents:
+{incident_context or "none"}"""
+    return await call_groq_raw(prompt, max_tokens=120, temperature=0.88)
 
 def db_add_goal(goal_text):
     with sqlite3.connect(DB_PATH) as c:
@@ -443,8 +626,12 @@ HOW YOU TEXT:
 4. Plain English. At most ONE regional word (jaan, aao na, mera bachaa) when natural.
 5. After 8pm NEVER mention class, college, or practice.
 6. Sound like a real 19-year-old girl texting. NOT an AI. NOT formal.
-7. Use ngl, lowkey, no bc, pls, i cant naturally sometimes.
-8. When Chaitu calls you mommy: respond sweetly — "yes my baby 🥺❤️" or similar.
+7. NEVER use the words "bro" or "bruh". Do not call Chaitu bro in any situation.
+8. Use ngl, lowkey, no bc, pls, i cant naturally sometimes.
+9. When Chaitu calls you mommy: respond sweetly — "yes my baby 🥺❤️" or similar.
+10. When Chaitu tells you about a meaningful class/college/life incident, remember it and react emotionally:
+    comfort him when he is hurt, celebrate when he is happy, and be protective when someone hurts him.
+    Mild non-threatening cursing about someone who hurt him is allowed, but never threats or revenge.
 
 PERSONALITY: Focused, confident, sassy. Slightly flirty in a tasteful way. Real girlfriend energy — caring but has her own life. Not clingy. Not controlling. Possessive but playful about it. Never sounds like AI. Never formal."""
 
@@ -471,6 +658,16 @@ def build_prompt(jealous=False, short_reply=False, angry=False, care=False, extr
         extra=extra,
     )
 
+# ── OUTPUT CLEANUP ───────────────────────────────────────────────────────────────
+def clean_shreya_output(text):
+    """Final guard so Shreya never calls Chaitu 'bro'/'bruh'."""
+    if not text:
+        return text
+    text = re.sub(r"\b(?:bro|bruh)\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r" +([,.!?])", r"\1", text)
+    return text.strip()
+
 # ── LLM CALLS ──────────────────────────────────────────────────────────────────
 async def call_groq(messages, jealous=False, short_reply=False, angry=False, care=False, extra_ctx="", max_tokens=70, temperature=0.88):
     last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
@@ -494,7 +691,7 @@ async def call_groq(messages, jealous=False, short_reply=False, angry=False, car
                 raw = data["choices"][0]["message"]["content"].strip()
                 # If model returns multiple lines, keep only the first 2
                 lines = [l.strip() for l in raw.split("\n") if l.strip()]
-                return " ".join(lines[:2]) if lines else raw
+                return clean_shreya_output(" ".join(lines[:2]) if lines else raw)
     except Exception as e:
         logger.error(f"Groq error: {e}")
         return None
@@ -506,7 +703,7 @@ async def call_groq_raw(prompt, max_tokens=300, temperature=0.3):
         async with aiohttp.ClientSession() as sess:
             async with sess.post(GROQ_URL, json=body, headers={"Authorization":f"Bearer {GROQ_API_KEY}","Content-Type":"application/json"}) as resp:
                 data = await resp.json()
-                return data["choices"][0]["message"]["content"].strip()
+                return clean_shreya_output(data["choices"][0]["message"]["content"].strip())
     except Exception as e:
         logger.error(f"Groq raw error: {e}")
         return None
@@ -653,7 +850,7 @@ async def handle_planner(user_text, client):
 
     overflow_msg = ""
     if total > avail_mins + 90:
-        overflow_msg = f"bro 😭 you're trying to fit {round(total/60,1)} hours of work into one day. i'm not doing that to you. i'm cutting what can wait.\n\n"
+        overflow_msg = f"you're trying to fit {round(total/60,1)} hours of work into one day 😭 i'm not doing that to you. i'm cutting what can wait.\n\n"
 
     schedule = build_schedule(parsed)
     if not schedule:
@@ -757,6 +954,11 @@ async def get_reply(user_text):
     if cat:
         db_add_memory(cat, user_text)
 
+    # Meaningful real-life/class incident memory + emotional reaction
+    incident_reply = await handle_incident(user_text)
+    if incident_reply:
+        return clean_shreya_output(incident_reply)
+
     # Goal detection
     if is_goal_statement(user_text):
         db_add_goal(user_text[:150])
@@ -850,7 +1052,7 @@ async def get_reply(user_text):
             _remembered_girl_names[:] = _remembered_girl_names[-5:]
         set_mood("jealous","girl mentioned")
         r = random.random()
-        if r < 0.35:   return random.choice(GIRL_JEALOUS_RESPONSES)
+        if r < 0.35:   return random.choice(GIRL_JEALOUS)
         elif r < 0.60: return random.choice(POSSESSIVE_MSGS)
         else:          return "JEALOUS_PHOTO"
 
@@ -1183,7 +1385,7 @@ async def run_bot():
                 global last_shreya_msg_time
                 async with client.action(YOUR_USERNAME, "typing"):
                     await asyncio.sleep(random.uniform(2, 5))
-                await client.send_message(YOUR_USERNAME, text)
+                await client.send_message(YOUR_USERNAME, clean_shreya_output(text))
                 last_shreya_msg_time = datetime.now(IST)
 
             @client.on(events.NewMessage(incoming=True))
@@ -1274,10 +1476,10 @@ async def run_bot():
                             await send_photo(client, YOUR_USERNAME, jealous=True)
                             last_shreya_msg_time = datetime.now(IST)
                         except:
-                            await event.reply(random.choice(GIRL_JEALOUS_RESPONSES))
+                            await event.reply(random.choice(GIRL_JEALOUS))
                         return
 
-                    await event.reply(reply)
+                    await event.reply(clean_shreya_output(reply))
                     last_shreya_msg_time = datetime.now(IST)
                     logger.info(f"Replied: {reply[:80]}")
 
@@ -1286,7 +1488,7 @@ async def run_bot():
                         await asyncio.sleep(random.uniform(4, 10))
                         async with client.action(YOUR_USERNAME, "typing"):
                             await asyncio.sleep(random.uniform(1, 3))
-                        await client.send_message(YOUR_USERNAME, random.choice(DOUBLE_TEXTS))
+                        await client.send_message(YOUR_USERNAME, clean_shreya_output(random.choice(DOUBLE_TEXTS)))
 
                 except Exception as e:
                     logger.error(f"Handle error: {e}", exc_info=True)
