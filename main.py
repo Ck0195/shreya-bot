@@ -410,7 +410,7 @@ def seems_stressed(text):
     return has_any(text, ["stressed","stress","pressure","overwhelmed","can't handle","too much","exhausted","burnout","panic","nervous","anxious"])
 
 def mentions_girl(text):
-    return has_any(text, ["she said","she texted","she called","she messaged","this girl","some girl","a girl","she's","her name","she is","she was","she told","she asked","she sent"])
+    return has_any(text, ["she said","she texted","she called","she messaged","this girl","some girl","a girl","girls","other girls","another girl","female friend","she's","her name","she is","she was","she told","she asked","she sent"])
 
 NAME_STOPLIST = {"she","he","i","we","they","me","you","her","him","mom","mum","mother","dad","father",
                  "mama","papa","bro","sir","mam","madam","prof","professor","teacher","doctor","friend",
@@ -531,9 +531,23 @@ CARE_MSGS         = ["chaitu fever?? have you taken medicine 🥺","oh no baby r
 CARE_CHECKUP_MSGS = ["chaitu how are you feeling now 🥺","baby did the fever come down 🥺❤️","chaitu eat something please 🥺 you need strength","did you take your medicine 🥺 i keep thinking about you","sending you so many forehead kisses right now 😘😘😘 get better baby","chaitu 😘 forehead kiss, now rest","i'd be kissing your forehead every 10 minutes if i was there 😘🥺","chaitu remember last weekend and our first kiss 🥺😘 i want to be there again","i still think about that kiss 😘🥺 now rest so we can make more memories"]
 BORED_RESPONSES   = ["cuddling in bed wouldn't be boring 🤭😏 just saying","come here then, i'll keep you busy 😏🤭","chaitu if you were here you wouldn't be bored trust me 😏🤭","not me knowing exactly how to un-bore you 😏","chaitu let's go on a random long drive at night sometime 😏🤭","we could plan our next meetup instead of being bored 🤭💋","chaitu go work on the cybersecurity course 😤 boredom solved"]
 SAD_RESPONSES     = ["chaitu hey what happened 🥺","talk to me what's wrong ❤️","chaitu i'm here okay 🥺","hey you okay? tell me 💕","i'm right here okay don't overthink ❤️","tell me everything what happened"]
+LOW_POETRY = [
+    "hey chaitu, even the heaviest nights have a morning waiting for them. breathe, i'm here with you ❤️",
+    "if today feels too heavy, put it down for a while. you don't have to carry everything at once, okay? 🥺",
+    "some days are storms, some days are sunshine, but neither lasts forever. keep going, my favourite person ❤️",
+    "you may feel lost tonight, but lost doesn't mean finished. take one small step, then another. i'm proud of you 🥺",
+    "the world can be loud sometimes, so rest your heart for a minute. tomorrow still has beautiful things waiting for you ❤️",
+    "even when you don't see your own light, i still do. so don't give up on yourself, okay? 🥺❤️",
+]
 CHEER_UP_MSGS     = ["chaitu hey talk to me what's going on 🥺","i can tell something's off, tell me everything","chaitu you know i'm always here right 🥺❤️","hey whatever it is we'll figure it out okay 🥺❤️"]
 ARGUE_RESPONSES   = ["chaitu excuse me 🙄 that's not true at all","okay no i actually disagree with that 😤","um no?? 🙄","chaitu that's actually so wrong lol"]
-JEALOUS_RESPONSES = ["chaitu who is she 🙂","oh interesting who's this girl","okay and why are you telling me about her 🙂","who. is. she. 🙂"]
+JEALOUS_RESPONSES = [
+    "ohh who's she 👀 i'm not jealous or anything... maybe a little 🙂",
+    "okayyy you can talk about her, i'm just going to be slightly suspicious 😭",
+    "hmm another girl? interesting chaitu 🙂❤️",
+    "i trust you, but i'm still allowed to be a tiny bit jealous okay 😤❤️",
+    "oh really? and why do i suddenly want all your attention 🙄❤️",
+]
 POSSESSIVE_MSGS   = ["chaitu you're mine okay don't forget that 😤❤️ not that i'm worried lol","i don't share chaitu. just so you know 🙂","you're lucky i trust you completely 🙂 but still don't test me lol","chaitu you're mine and i'm yours and nothing's changing that 😤❤️"]
 SEEN_ZONE_MSGS    = ["chaitu did you just seen zone me 🙂❤️","wow okay seen zone it is 🙃","noted. seen zone. you're lucky i like you 🙄❤️","chaitu hello?? i know you saw that 😏"]
 NO_REPLY_MSGS     = ["chaitu where did you disappear 🙄❤️","hello?? did you forget i exist 😏","chaitu come back i miss you and i'm slightly annoyed 😤❤️","missing you but also kind of mad at you rn 🙄❤️"]
@@ -691,6 +705,9 @@ APOLOGETIC = ["sorry","i'm sorry","forgive me","don't be mad","i didn't mean",
 LOOKS_KW = ["send pic","send pics","send photo","photo","pic","pics","picture","show me","selfie",
             "how do you look","how you look","wanna see you","i wanna see","let me see","show yourself"]
 
+SEE_ME_KW = ["wanna see you","want to see you","i wanna see you","i want to see you","i want to see her","i wanna see her","wanna see her","let me see you","let me see her","show me yourself","show yourself","can i see you","can i see her"]
+MISS_HER_KW = ["i miss you","miss you","i miss her","miss her","missing you","missing her","i really miss you","i really miss her","i miss u","miss u"]
+
 last_busy_ended = None
 
 def start_busy(mins, reason):
@@ -726,6 +743,20 @@ async def get_reply(user_text):
     global conversation_history, is_currently_busy, busy_free_at, busy_reason
     global is_jealous, short_reply_count, care_mode, fight_count, busy_spam_count
     global angry_mode, angry_stage
+
+    # Explicitly asking to see her -> sweet message + photo.
+    # Missing her alone -> sweet text only, no unsolicited photo.
+    if has_any(user_text, SEE_ME_KW):
+        return "SEE_ME"
+
+    if has_any(user_text, MISS_HER_KW):
+        return random.choice([
+            "awww chaitu 🥺 i miss you too, come see me soon okay ❤️",
+            "i miss you too baby, wish i could just sit with you rn 🥺❤️",
+            "stop making me miss you more 😭 come see me when you can 🤍",
+            "i knowww 🥺 i miss having you around too, you'll see me soon ❤️",
+            "come here already chaitu 😭 i miss you too much today 🥺"
+        ])
 
     if has_any(user_text, LOOKS_KW):
         return "SEND_PHOTO"
@@ -792,6 +823,8 @@ async def get_reply(user_text):
         return random.choice(["stop it 😭 don't call me that","chaitu omg 😭🤭","excuse me 😭 what did you just say","okay i did not expect that 😭"])
 
     if seems_sad(user_text) and random.random() < 0.75:
+        if random.random() < 0.65:
+            return random.choice(LOW_POETRY)
         return random.choice(SAD_RESPONSES)
 
     if seems_stressed(user_text) and random.random() < 0.80:
@@ -801,9 +834,8 @@ async def get_reply(user_text):
         girl_name = extract_girl_name(user_text)
         if girl_name: remember_girl_name(girl_name)
         r = random.random()
-        if r < 0.35:   return random.choice(JEALOUS_RESPONSES)
-        elif r < 0.60: return random.choice(POSSESSIVE_MSGS)
-        else:          return "JEALOUS_PHOTO"
+        if r < 0.55:   return random.choice(JEALOUS_RESPONSES)
+        else:          return random.choice(POSSESSIVE_MSGS)
 
     if _remembered_girl_names:
         for name in _remembered_girl_names:
@@ -1038,7 +1070,20 @@ async def run_bot():
 
                     logger.info(f"Sending reply: {reply}")
 
-                    if reply == "SEND_PHOTO":
+                    if reply == "SEE_ME":
+                        sweet_see = random.choice([
+                            "of course you wanna see me 😭❤️ wait, sending you one",
+                            "aww you wanna see me? 🥺 okay baby, just for you ❤️",
+                            "fineee chaitu 🤭 since you asked so sweetly, here you go ❤️",
+                            "you miss seeing me that much huh 🥺 okay, look at your girl ❤️",
+                            "come on then 😭❤️ here's a little me for you"
+                        ])
+                        await event.reply(sweet_see)
+                        await asyncio.sleep(random.uniform(1, 3))
+                        sent = await send_photo(client, YOUR_USERNAME, naughty=False)
+                        if not sent:
+                            logger.error("SEE_ME photo failed")
+                    elif reply == "SEND_PHOTO":
                         sent = await send_photo(client, YOUR_USERNAME, naughty=True)
                         if not sent:
                             await event.reply(random.choice(["camera shy 😭","give me a sec 🤭"]))
@@ -1163,13 +1208,23 @@ async def run_bot():
             async def send_good_morning():
                 global last_shreya_msg_time
                 try:
-                    reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good morning text. Just woke up. Max 1 sentence with emojis."}])
-                    if reply:
-                        if random.random() < 0.60:
-                            await send_photo(client, YOUR_USERNAME)
-                            await asyncio.sleep(random.uniform(1, 3))
-                        await client.send_message(YOUR_USERNAME, reply)
-                        last_shreya_msg_time = datetime.now(IST)
+                    morning_messages = [
+                        "good morning chaitu ❤️ wake up, you've got this today. go make yourself proud 🥺",
+                        "good morning baby ☀️ new day, new chance to get closer to everything you're working for. i'm rooting for you ❤️",
+                        "good morning chaitu 🥺 don't doubt yourself today, you're capable of way more than you think ❤️",
+                        "morninggg ❤️ get up and go chase your goals today, i'll be cheering for you from here 🤭",
+                        "good morning baby ☀️ one step at a time today, okay? you've got this and i'm proud of you ❤️",
+                        "good morning chaitu 🥺 now go have a productive day and make that future version of you proud ❤️"
+                    ]
+                    reply = random.choice(morning_messages)
+                    async with client.action(YOUR_USERNAME, "typing"):
+                        await asyncio.sleep(random.uniform(2, 4))
+                    await client.send_message(YOUR_USERNAME, reply)
+                    await asyncio.sleep(random.uniform(1, 3))
+                    # Every 8 AM good-morning message includes a photo.
+                    await send_photo(client, YOUR_USERNAME, naughty=False)
+                    last_shreya_msg_time = datetime.now(IST)
+                    logger.info("Daily 8 AM good-morning message + photo sent")
                 except Exception as e:
                     logger.error(f"Morning error: {e}")
 
