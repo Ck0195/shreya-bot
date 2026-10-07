@@ -441,12 +441,12 @@ def is_monsoon():
 
 def get_time_context():
     h = datetime.now(IST).hour
-    if 5 <= h < 9:    return "early morning, just woke up, sleepy"
-    elif 9 <= h < 13: return "morning, in college at Ramaiah ISC, classes going on"
-    elif 13 <= h < 15:return "afternoon, lunch break at college"
-    elif 15 <= h < 18:return "late afternoon, college or dance practice"
-    elif 18 <= h < 20:return "evening, done with college, relaxing at home"
-    else:             return "night, at home, fully free and relaxed"
+    if 5 <= h < 9:     return "early morning, just woke up, sleepy"
+    elif 9 <= h < 13:  return "morning, in college at MS Ramaiah College of Engineering, classes going on"
+    elif 13 <= h < 15: return "afternoon, lunch break at college"
+    elif 15 <= h < 18: return "late afternoon, college, lab or dance practice"
+    elif 18 <= h < 20: return "evening, done with college, relaxing at home"
+    else:              return "night, at home, studying or relaxed"
 
 def get_meal_context():
     h = datetime.now(IST).hour
@@ -515,6 +515,15 @@ DADDY_MOMENTS     = ["chaitu 🤭 okay fine, hey daddy","don't get used to it �
 MOTIVATION_MSGS   = ["chaitu you better be working on it rn 😤","no excuses chaitu finish it 💪","chaitu don't give up on this pls 🥺","i believe in you but also get back to work 😭💪","chaitu focus 😤 you got this"]
 FLIRTY_MOT_MSGS   = ["chaitu finish your work and then i'm all yours 🤭❤️","ngl hardworking chaitu is actually so attractive 😍 keep going","chaitu finish it and i'll give you a surprise 🤭","chaitu the grind looks good on you 😍 keep going","not me finding motivated chaitu extremely cute 🤭💕","ngl i miss you in a very specific way right now 🤭💋","you make it very hard to think straight sometimes 😏💋"]
 PERSONAL_GOALS    = ["chaitu how's the cybersecurity course going 😤 don't tell me you haven't opened it","finish that cybersecurity course chaitu, future you will thank you 💪","ngl a guy who knows cybersecurity is actually so attractive 😏 finish the course","chaitu if you finish the cybersecurity course i'll be very very proud 🥺😏","chaitu the RS457 is not going to buy itself 😤 focus and earn it","imagine us riding the Aprilia RS457 someday 🥺😍 work for it chaitu","ngl you on an Aprilia RS457 would be everything 😍 go work for it","someone said you can't get it 🙂 we both know how this ends 😏","chaitu when you pull up on that RS457 i want to see their face 😤😂","they said you can't 🙂 that's their biggest mistake","chaitu get the RS457 just to make a point 😤 i'll be your biggest supporter"]
+STUDIOUS_MSGS = [
+    "chaitu i'm studying rn, don't distract me 😤📚",
+    "ngl i have an internal coming up so i'm locked in 📚",
+    "i want a really good placement so i'm grinding this sem 💪",
+    "chaitu i finished my whole portfolio of notes today, productive girl era 😌",
+    "lowkey proud of myself, i didn't waste a single hour today 😌✨",
+    "after dance i still managed to study, who's the best 🤭",
+    "chaitu what did you learn today, don't say nothing 😤",
+]
 GOODLUCK_MSGS     = ["chaitu you've got this, go kill that exam 💪","all the best chaitu 🥺 you studied hard you'll do great","go show them what BIT AIML is made of 😤💪","chaitu i'm rooting for you, do well okay 🥺"]
 NUDGE_PROMPTS     = ["Chaitu hasn't texted. Miss him. Text him casually.","Haven't heard from Chaitu. Check on him.","Chaitu is quiet. Small casual message to him."]
 MEAL_PROMPTS      = {"breakfast":["Ask Chaitu if he had breakfast. Be casual."],"lunch":["Ask Chaitu if he had lunch. Keep it short."],"dinner":["Ask Chaitu if he had dinner yet. Be casual."]}
@@ -553,9 +562,42 @@ COMEBACK_LOVE = [
 ]
 MAKE_UP_MSGS      = ["chaitu okay fine i'm sorry for being mad 🥺","ugh i hate being mad at you it doesn't even feel right 🥺❤️","chaitu i can't stay mad at you for too long you know that 😭❤️"]
 SHORT_REACTIONS   = ["chaitu that's all you have to say 🙄","wow okay cool 🙃","are you even listening to me","chaitu i swear 😤","that's it??","CHAITANYA KUMAR say something properly 😤","CHAITANYA KUMAR i swear you are so annoying 😤","chaitanya kumar are you even reading what i send 🙄"]
-BUSY_DAY          = [("in class rn, miss me 😘",60,"class"),("in the middle of practice, think about me 🙄❤️",60,"dance practice"),("assignment due today, i'll be back before you miss me too much 💕",45,"assignment"),("can't talk rn, save all your texts for when i'm back 😘",50,"class"),("shoot going on, don't go anywhere 🫶",90,"navaratan shoot")]
-BUSY_ANY          = [("mama called, don't miss me too much 😘",15,"mama call"),("give me a few mins, i'll be back only for you 🥺",10,"something"),("busy for a bit, think about me while i'm gone 😏",20,"something")]
-FOLLOWUP          = {"class":["class just got over 😮‍💨","finally out of class omg"],"dance practice":["practice done, i'm dead 😩","finally done with practice 😮‍💨"],"assignment":["submitted the assignment finally 😮‍💨"],"navaratan shoot":["shoot is done ✨ was so tiring"],"mama call":None,"something":None}
+BUSY_DAY = [
+    ("in class rn, miss me 😘", 60, "class"),
+    ("in lab, phones not allowed 😭 text you later", 90, "lab"),
+    ("in the middle of dance practice, think about me 🙄❤️", 75, "dance practice"),
+    ("assignment due today, i'll be back before you miss me too much 💕", 45, "assignment"),
+    ("can't talk rn, save all your texts for when i'm back 😘", 50, "class"),
+    ("bharatanatyam class, can't talk 🙏 later", 90, "bharatanatyam class"),
+    ("shoot going on, don't go anywhere 🫶", 90, "navaratan shoot"),
+]
+BUSY_ANY = [
+    ("mama called, don't miss me too much 😘", 15, "mama call"),
+    ("studying for my internals, text you later 📚", 60, "study"),
+    ("busy for a bit, think about me while i'm gone 😏", 20, "something"),
+    ("dance practice, will text after 💃", 75, "dance practice"),
+]
+FOLLOWUP = {
+    "class": ["class just got over 😮‍💨", "finally out of class omg"],
+    "lab": ["lab finally done, my brain is fried 😩"],
+    "dance practice": ["practice done, i'm dead 😩", "finally done with practice 😮‍💨"],
+    "bharatanatyam class": ["class done, my feet are dead 😩🙏"],
+    "assignment": ["submitted the assignment finally 😮‍💨"],
+    "study": ["done with my study session 📚 what were you saying"],
+    "navaratan shoot": ["shoot is done ✨ was so tiring"],
+    "mama call": ["back, mama talked forever 😭"],
+    "something": ["okay i'm back 🥺 what did i miss"],
+}
+
+URGENT_KW = ["please reply", "pls reply", "plz reply", "reply na", "talk to me", "please talk",
+              "pls talk", "speak to me", "please speak", "pls speak", "need you", "need to talk",
+              "urgent", "come online", "pick up"]
+BREAK_BUSY_MSGS = [
+    "okay okay i'm here 🥺 what happened",
+    "fine i'll take 5 mins for you 😤❤️ tell me",
+    "chaitu 🥺 i stepped out just for you, what is it",
+    "ugh okay you win 🙄❤️ i'm listening",
+]
 ANGRY_PROMPTS     = ["Send Chaitu a very angry sarcastic text. He deleted Telegram without even telling you. You are genuinely upset.","Tell Chaitu how disrespectful it was to just vanish without a word. Be cold.","Scold Chaitu hard for disappearing. You were worried and now you're angry.","Tell Chaitu you don't like being treated like this. Be sharp.","Ask Chaitu sarcastically if he even thought about how you'd feel when he just disappeared."]
 
 ANGRY_FIRST_REPLY = [
@@ -569,7 +611,7 @@ ANGRY_FIRST_REPLY = [
     "CHAITANYA KUMAR explain yourself right now 😤",
 ]
 
-SHREYA_SYSTEM = """You are Shreya, 19, texting her boyfriend Chaitu, 19. Known each other 16 years. From Puttur Mangalore, studying Ramaiah College Bangalore ISC branch. Chaitu is at BIT college AIML branch. You do Bharatanatyam, western dance, model for Navaratan Jewels. Father in politics. Mother loves Chaitu like her own son.
+SHREYA_SYSTEM = """You are Shreya, 19, texting her boyfriend Chaitu, 19. Known each other 16 years. From Puttur Mangalore, studying at MS Ramaiah College of Engineering, ISC department, Bangalore. Chaitu is at BIT college AIML branch. You do Bharatanatyam, western dance, and model for Navaratan Jewels. Father in politics. Mother loves Chaitu like her own son.
 
 SPECIAL MEMORY: Chaitu came to your house for 3 days during holidays. You both cuddled a lot and shared your first kiss. One of your most precious memories.
 
@@ -648,6 +690,37 @@ APOLOGETIC = ["sorry","i'm sorry","forgive me","don't be mad","i didn't mean",
 
 LOOKS_KW = ["send pic","send pics","send photo","photo","pic","pics","picture","show me","selfie",
             "how do you look","how you look","wanna see you","i wanna see","let me see","show yourself"]
+
+last_busy_ended = None
+
+def start_busy(mins, reason):
+    global is_currently_busy, busy_free_at, busy_reason, busy_spam_count
+    is_currently_busy = True
+    busy_free_at = datetime.now(IST) + timedelta(minutes=mins)
+    busy_reason = reason
+    busy_spam_count = 0
+
+def end_busy():
+    global is_currently_busy, busy_free_at, busy_reason, busy_spam_count, last_busy_ended
+    is_currently_busy = False
+    busy_free_at = None
+    busy_reason = None
+    busy_spam_count = 0
+    last_busy_ended = datetime.now(IST)
+
+def can_go_busy():
+    return last_busy_ended is None or (datetime.now(IST) - last_busy_ended).total_seconds() > 5400
+
+def human_reply_delay(text):
+    wc = len(text.split())
+    if wc <= 3:    d = random.uniform(25, 75)
+    elif wc <= 12: d = random.uniform(45, 150)
+    else:          d = random.uniform(75, 240)
+    if is_busy_hours():
+        d *= random.uniform(1.2, 2.0)
+    if random.random() < 0.10:
+        d += random.uniform(300, 900)
+    return d
 
 async def get_reply(user_text):
     global conversation_history, is_currently_busy, busy_free_at, busy_reason
@@ -737,33 +810,29 @@ async def get_reply(user_text):
             if has_any(user_text, [name.lower()]) and random.random() < 0.60:
                 return f"chaitu why are you bringing up {name} again 🙂"
 
-    if wants_to_talk(user_text) and is_currently_busy:
-        is_currently_busy = False; busy_free_at = None; busy_reason = None; busy_spam_count = 0
+    # If Chaitu asks her to talk, she breaks out of busy
+    if is_currently_busy and has_any(user_text, URGENT_KW):
+        end_busy()
+        return random.choice(BREAK_BUSY_MSGS)
 
     if is_currently_busy:
-        now = datetime.now(IST)
-        if busy_free_at and now < busy_free_at:
+        if busy_free_at and datetime.now(IST) < busy_free_at:
             busy_spam_count += 1
             if busy_spam_count < 3:
-                return None
+                return "BUSY_SILENT"
             busy_spam_count = 0
-            return random.choice(["chaitu i said i'm busy 😭 but okay i miss you too 🥺","omg chaitu stop 😤 you're so needy and i love it 😘","okay okay i see you 🙄 i'll be back soon i promise 💕"])
-        else:
-            is_currently_busy = False; busy_free_at = None; busy_reason = None; busy_spam_count = 0
+            return random.choice(["chaitu i said i'm busy 😭 but okay i miss you too 🥺",
+                                  "omg chaitu stop 😤 you're so needy and i love it 😘",
+                                  "okay okay i see you 🙄 i'll be back soon i promise 💕"])
+        end_busy()
 
-    if is_busy_hours() and random.random() < 0.05:
-        scenario, mins, reason = random.choice(BUSY_DAY)
-        is_currently_busy = True
-        busy_free_at = datetime.now(IST) + timedelta(minutes=mins)
-        busy_reason = reason
-        return scenario
-
-    if not is_busy_hours() and random.random() < 0.02:
-        scenario, mins, reason = random.choice(BUSY_ANY)
-        is_currently_busy = True
-        busy_free_at = datetime.now(IST) + timedelta(minutes=mins)
-        busy_reason = reason
-        return scenario
+    if can_go_busy():
+        h = datetime.now(IST).hour
+        chance = 0.15 if is_busy_hours() else (0.08 if h >= 20 else 0.03)
+        if random.random() < chance:
+            scenario, mins, reason = random.choice(BUSY_DAY if is_busy_hours() else BUSY_ANY)
+            start_busy(mins, reason)
+            return scenario
 
     if is_short_reply(user_text): short_reply_count += 1
     else: short_reply_count = 0
@@ -780,9 +849,6 @@ async def get_reply(user_text):
     if short_reply_count >= 2 and random.random() < 0.6:
         short_reply_count = 0
         return random.choice(SHORT_REACTIONS)
-
-    if is_busy_hours() and not wants_to_talk(user_text) and random.random() < 0.05:
-        return None
 
     if random.random() < 0.08 and not wants_to_talk(user_text):
         return random.choice(["🥺","❤️","😭","💀","✨","😍","🫶","💕","😤","😂"])
@@ -811,6 +877,7 @@ def get_random_prompts():
     if random.random() < 0.08: return PROUD_MSGS + ROAST_MSGS
     if random.random() < 0.08: return TEASE_BIT_MSGS
     if random.random() < 0.12: return PERSONAL_GOALS
+    if random.random() < 0.10: return STUDIOUS_MSGS
     if random.random() < 0.20: return CHEESY_PROMPTS
     if random.random() < 0.10: return HUNGER_MSGS
     if random.random() < 0.08: return BRAG_MSGS
@@ -852,7 +919,7 @@ async def get_random_message(nudge=False, meal=None):
             _used_prompts.pop(0)
     # Prompts that are already finished messages (not instructions) get sent as-is
     if prompt in (OVERLOADED_LOVE_MSGS + HOLIDAY_MEMORY_MSGS + FIGHT_STARTERS + PETTY_MSGS + DELETED_TEASE_MSGS
-                  + SONGS_REELS + BRAG_ABOUT_YOU + PROUD_MSGS + ROAST_MSGS + TEASE_BIT_MSGS + PERSONAL_GOALS
+                  + SONGS_REELS + BRAG_ABOUT_YOU + PROUD_MSGS + ROAST_MSGS + TEASE_BIT_MSGS + PERSONAL_GOALS + STUDIOUS_MSGS
                   + HUNGER_MSGS + BRAG_MSGS + WOULD_YOU_RATHER + MEETUP_PLANNING + DEEP_Q_MSGS
                   + FUTURE_DATE_MSGS + CARE_CHECKUP_MSGS):
         return prompt
@@ -936,34 +1003,14 @@ async def run_bot():
                                 await event.reply("chaitu it's not loading 😭 try again")
                         return
 
-                    # Natural human-like response timing.
-                    # Short/simple messages get a quicker response; longer messages
-                    # get more thinking time. No hard 11 PM - 7 AM reply block.
-                    if random.random() < 0.20 and len(user_text.split()) > 3:
-                        await asyncio.sleep(random.uniform(10, 30))
-                        await send_reaction(client, event)
-
-                    word_count = len(user_text.split())
-                    if word_count <= 3:
-                        read_delay = random.uniform(3, 8)
-                    elif word_count <= 12:
-                        read_delay = random.uniform(5, 15)
-                    else:
-                        read_delay = random.uniform(8, 20)
-
-                    logger.info(f"Waiting {read_delay:.0f}s before replying")
-                    await asyncio.sleep(read_delay)
-
-                    async with client.action(YOUR_USERNAME, "typing"):
-                        typing_delay = random.uniform(2, 4)
-                        logger.info(f"Typing for {typing_delay:.0f}s")
-                        await asyncio.sleep(typing_delay)
-
-                    logger.info("Calling get_reply()...")
+                    # Human-like response timing. No hard offline hours.
                     reply = await get_reply(user_text)
 
-                    # Never silently fail after typing. If Groq/API fails, send a
-                    # natural fallback instead of making it look like Shreya ignored it.
+                    # Busy: she read it but stays silent until she's free
+                    if reply == "BUSY_SILENT":
+                        logger.info("Busy - staying silent")
+                        return
+
                     if not reply:
                         logger.error("get_reply() returned None - sending fallback")
                         reply = random.choice([
@@ -972,6 +1019,22 @@ async def run_bot():
                             "wait i'm listening 🥺",
                             "sorry 😭 i glitched for a sec"
                         ])
+
+                    # Quick reply if she's announcing busy, or he asked her to talk
+                    quick = is_currently_busy or reply in BREAK_BUSY_MSGS or has_any(user_text, URGENT_KW)
+                    delay = random.uniform(5, 20) if quick else human_reply_delay(user_text)
+
+                    if not quick and random.random() < 0.20:
+                        await asyncio.sleep(random.uniform(10, 30))
+                        await send_reaction(client, event)
+                        delay = max(0, delay - 20)
+
+                    logger.info(f"Waiting {delay:.0f}s before replying")
+                    await asyncio.sleep(delay)
+
+                    typing_delay = min(10, max(2, len(reply) * 0.1))
+                    async with client.action(YOUR_USERNAME, "typing"):
+                        await asyncio.sleep(typing_delay)
 
                     logger.info(f"Sending reply: {reply}")
 
@@ -1001,20 +1064,17 @@ async def run_bot():
                     logger.error(f"Handle error: {e}")
 
             async def check_busy_followup():
-                global is_currently_busy, busy_free_at, busy_reason
                 try:
                     if not is_currently_busy: return
-                    now = datetime.now(IST)
-                    if busy_free_at and now >= busy_free_at:
-                        is_currently_busy = False
+                    if busy_free_at and datetime.now(IST) >= busy_free_at:
                         reason = busy_reason
-                        busy_reason = None; busy_free_at = None
-                        if reason and reason in FOLLOWUP and FOLLOWUP[reason]:
-                            msg = random.choice(FOLLOWUP[reason])
+                        end_busy()
+                        msgs = FOLLOWUP.get(reason)
+                        if msgs:
                             await asyncio.sleep(random.uniform(2, 5))
                             async with client.action(YOUR_USERNAME, "typing"):
                                 await asyncio.sleep(random.uniform(1, 3))
-                            await client.send_message(YOUR_USERNAME, msg)
+                            await client.send_message(YOUR_USERNAME, random.choice(msgs))
                 except Exception as e:
                     logger.error(f"Busy followup error: {e}")
 
