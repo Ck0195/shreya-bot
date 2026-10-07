@@ -2,7 +2,6 @@ import os
 import asyncio
 import random
 import logging
-import tempfile
 import aiohttp
 import pytz
 import json
@@ -26,12 +25,18 @@ YOUR_USERNAME  = os.environ.get("YOUR_USERNAME")
 SESSION_STRING = os.environ.get("SESSION_STRING")
 IST            = pytz.timezone("Asia/Kolkata")
 
+# Set DATA_DIR to a persistent volume path on your host so memory survives restarts.
+DATA_DIR = os.environ.get("DATA_DIR", "/tmp")
+os.makedirs(DATA_DIR, exist_ok=True)
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+
 # State
 conversation_history   = []
 is_currently_busy      = False
 busy_free_at           = None
 busy_reason            = None
-last_reply_time        = None
+last_reply_time        = None   # time of Chaitu's most recent message
+prev_reply_time        = None   # time of Chaitu's message BEFORE the most recent one
 is_jealous             = False
 short_reply_count      = 0
 last_shreya_msg_time   = None
@@ -45,16 +50,21 @@ fight_count            = 0
 _remembered_girl_names = []
 _used_prompts          = []
 
+# ── Text matching helper (word boundaries, so "pic" doesn't match "topic") ───
+def has_any(text, phrases):
+    t = text.lower()
+    return any(re.search(r"\b" + re.escape(p) + r"\b", t) for p in phrases)
+
 # Memory
-MEMORY_FILE = "/tmp/shreya_memory.json"
-GOALS_FILE  = "/tmp/shreya_goals.json"
+MEMORY_FILE = os.path.join(DATA_DIR, "shreya_memory.json")
+GOALS_FILE  = os.path.join(DATA_DIR, "shreya_goals.json")
 
 def load_memory():
     try:
         if os.path.exists(MEMORY_FILE):
             with open(MEMORY_FILE) as f:
                 return json.load(f)
-    except:
+    except Exception:
         pass
     return {"facts": []}
 
@@ -95,10 +105,11 @@ def get_incident_context(text):
     return ""
 
 def should_remember(text):
-    triggers = ["my birthday", "i like", "i love", "i hate", "i am", "i'm",
-                "my favourite", "i work", "i study", "remember", "my friend",
-                "exam", "test", "result", "assignment", "trip", "mom", "dad", "sick"]
-    if any(t in text.lower() for t in triggers):
+    # Removed broad triggers ("i am", "i'm", "i like") that stored almost every message.
+    triggers = ["my birthday", "i love", "i hate", "my favourite", "i work", "i study",
+                "remember", "my friend", "exam", "test", "result", "assignment",
+                "trip", "mom", "dad", "sick"]
+    if has_any(text, triggers):
         date_str = datetime.now(IST).strftime("%d %b")
         return f"[{date_str}] {text[:120]}"
     return None
@@ -108,7 +119,7 @@ def load_goals():
         if os.path.exists(GOALS_FILE):
             with open(GOALS_FILE) as f:
                 return json.load(f)
-    except:
+    except Exception:
         pass
     return {"goals": []}
 
@@ -130,7 +141,7 @@ def get_goals():
     return load_goals().get("goals", [])
 
 # ── Incident Memory (SQLite) ──────────────────────────────────────────────────
-INCIDENTS_DB = "/tmp/shreya_incidents.db"
+INCIDENTS_DB = os.path.join(DATA_DIR, "shreya_incidents.db")
 
 def init_incidents_db():
     conn = sqlite3.connect(INCIDENTS_DB)
@@ -193,8 +204,7 @@ def is_incident_message(text):
                 "she said", "they said", "insulted", "embarrassed", "selected",
                 "rejected", "won", "lost", "fight", "argument", "helped",
                 "hurt", "angry", "happy", "sad", "proud", "funny", "terrible"]
-    text_lower = text.lower()
-    return any(k in text_lower for k in keywords) and len(text.split()) > 5
+    return has_any(text, keywords) and len(text.split()) > 5
 
 async def extract_and_save_incident(text):
     """Call Groq to extract incident details"""
@@ -205,7 +215,7 @@ async def extract_and_save_incident(text):
 Message: "{text}"
 JSON format: {{"person": "name or unknown", "what_happened": "brief summary", "emotion": "happy/sad/angry/proud/embarrassed/hurt/funny/excited/neutral", "category": "class/exam/friend/achievement/argument/insult/other"}}
 If not a real life event return: {{"skip": true}}"""
-        body = {"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "max_tokens": 150, "temperature": 0.3}
+        body = {"model": GROQ_MODEL, "messages": [{"role": "user", "content": prompt}], "max_tokens": 150, "temperature": 0.3}
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body, headers=headers) as resp:
                 data = await resp.json()
@@ -213,7 +223,13 @@ If not a real life event return: {{"skip": true}}"""
                 raw  = raw.replace("```json", "").replace("```", "").strip()
                 parsed = json.loads(raw)
                 if not parsed.get("skip"):
-                    save_incident(parsed.get("person", "unknown"), parsed.get("what_happened", text[:100]), parsed.get("emotion", "neutral"), parsed.get("category", "other"))
+                    await asyncio.to_thread(
+                        save_incident,
+                        parsed.get("person", "unknown"),
+                        parsed.get("what_happened", text[:100]),
+                        parsed.get("emotion", "neutral"),
+                        parsed.get("category", "other"),
+                    )
     except Exception as e:
         logger.error(f"Incident extract error: {e}")
 
@@ -222,7 +238,7 @@ init_incidents_db()
 def detect_goal(text):
     triggers = ["learning", "studying", "want to learn", "trying to", "working on",
                 "started", "i will", "need to finish", "my goal", "practicing", "building", "coding"]
-    if any(t in text.lower() for t in triggers):
+    if has_any(text, triggers):
         return text[:150]
     return None
 
@@ -251,9 +267,8 @@ SONG_CAPTIONS = [
 ]
 
 def detect_song_request(text):
-    text_lower = text.lower()
     for key in SONG_LIBRARY:
-        if key in text_lower:
+        if has_any(text, [key]):
             return key
     return None
 
@@ -344,17 +359,25 @@ CHAITU_BIRTHDAY = (6, 15)
 ANNIVERSARY     = (1, 1)
 SHREYA_BIRTHDAY = (8, 15)
 
+# Fixed-date festivals (same every year)
 FESTIVALS = {
-    (3, 14): ["happy holi chaitu 🎨😂 don't you dare put colour on me"],
-    (10, 2): ["happy dussehra chaitu 🙏❤️"],
-    (10,20): ["happy diwali chaitu 🪔✨ stay safe okay 🥺"],
-    (4, 14): ["happy ugadi chaitu 🌸❤️ new year new us"],
     (1, 14): ["happy sankranti chaitu 🪁❤️"],
     (3,  8): ["chaitu it's women's day and you better say something nice 😏"],
 }
+# Festivals that move every year — UPDATE THESE EACH YEAR.
+# 2026 dates: Holi Mar 4, Ugadi Mar 19, Dussehra Oct 20, Diwali Nov 8. Please double-check against a calendar.
+MOVING_FESTIVALS = {
+    2026: {
+        (3,  4): ["happy holi chaitu 🎨😂 don't you dare put colour on me"],
+        (3, 19): ["happy ugadi chaitu 🌸❤️ new year new us"],
+        (10,20): ["happy dussehra chaitu 🙏❤️"],
+        (11, 8): ["happy diwali chaitu 🪔✨ stay safe okay 🥺"],
+    },
+}
 
 def get_special_day():
-    m, d = datetime.now(IST).month, datetime.now(IST).day
+    now = datetime.now(IST)
+    m, d = now.month, now.day
     if (m, d) == SHREYA_BIRTHDAY:  return "your_birthday"
     if (m, d) == CHAITU_BIRTHDAY:  return "chaitu_birthday"
     if (m, d) == ANNIVERSARY:      return "anniversary"
@@ -364,7 +387,7 @@ def is_exam_month():
     return datetime.now(IST).month in [1, 4, 10, 11]
 
 def wants_to_talk(text):
-    return any(k in text.lower() for k in ["talk","free","busy","call","time","available","reply","hello","you there","listen","i need you","please","miss you","mommy","speak","chat"])
+    return has_any(text, ["talk","free","busy","call","available","reply","hello","you there","listen","i need you","miss you","mommy","speak","chat"])
 
 def is_short_reply(text):
     text = text.strip()
@@ -372,37 +395,34 @@ def is_short_reply(text):
     return len(text.split()) <= 2 or text.lower() in lazy
 
 def is_late_reply():
-    if last_reply_time is None: return False
-    return (datetime.now(IST) - last_reply_time).total_seconds() > 1800
+    """True if the gap BEFORE this message was long (uses prev_reply_time, not the one just updated)."""
+    if prev_reply_time is None: return False
+    return (datetime.now(IST) - prev_reply_time).total_seconds() > 1800
 
 def seems_sad(text):
     if len(text.strip().split()) <= 2: return False
-    return any(k in text.lower() for k in ["sad","not okay","not good","bad day","upset","depressed","miss you","lonely","frustrated","leave it","nevermind"])
+    return has_any(text, ["sad","not okay","not good","bad day","upset","depressed","miss you","lonely","frustrated","leave it","nevermind"])
 
 def seems_bored(text):
-    return any(k in text.lower() for k in ["bored","boring","nothing to do","so bored","kinda bored","feeling bored"])
-
-def seems_sick(text):
-    return any(k in text.lower() for k in ["fever","sick","ill","cold","cough","headache","not feeling well","feeling sick","temperature","throat","body pain","not well","medicine","tablet","doctor"])
-
-def is_feeling_better(text):
-    return any(k in text.lower() for k in ["feeling better","i'm good","i am good","better now","all good","recovered","fine now","good now","much better"])
+    return has_any(text, ["bored","boring","nothing to do","so bored","kinda bored","feeling bored"])
 
 def seems_stressed(text):
-    return any(k in text.lower() for k in ["stressed","stress","pressure","overwhelmed","can't handle","too much","exhausted","burnout","panic","nervous","anxious"])
-
-def got_compliment(text):
-    return any(k in text.lower() for k in ["beautiful","pretty","cute","gorgeous","amazing","talented","best","love you","proud","wow","stunning","nice","good","great"])
+    return has_any(text, ["stressed","stress","pressure","overwhelmed","can't handle","too much","exhausted","burnout","panic","nervous","anxious"])
 
 def mentions_girl(text):
-    return any(s in text.lower() for s in ["she said","she texted","she called","she messaged","this girl","some girl","a girl","she's","her name","she is","she was","she told","she asked","she sent"])
+    return has_any(text, ["she said","she texted","she called","she messaged","this girl","some girl","a girl","she's","her name","she is","she was","she told","she asked","she sent"])
+
+NAME_STOPLIST = {"she","he","i","we","they","me","you","her","him","mom","mum","mother","dad","father",
+                 "mama","papa","bro","sir","mam","madam","prof","professor","teacher","doctor","friend",
+                 "everyone","someone","nobody","who","what","it","that","this","shreya","chaitu","sister","brother"}
 
 def extract_girl_name(text):
-    for pattern in [r"her name is (\w+)", r"(\w+) said", r"(\w+) texted"]:
-        match = re.search(pattern, text.lower())
+    """Only matches capitalised names in the original text, and skips common non-name words."""
+    for pattern in [r"[Hh]er name is ([A-Za-z]+)", r"\b([A-Z][a-z]+) (?:said|texted)\b"]:
+        match = re.search(pattern, text)
         if match:
             name = match.group(1).capitalize()
-            if name.lower() not in ["she","he","i","we","they","me","you","her","him"]:
+            if name.lower() not in NAME_STOPLIST:
                 return name
     return None
 
@@ -585,6 +605,7 @@ def get_prompt(jealous=False, short_reply=False):
     if short_reply:                   extra += "IMPORTANT: Chaitu keeps giving one word lazy replies. You are a little annoyed.\n"
     if care_mode:                     extra += "IMPORTANT: Chaitu is sick/has fever. Be caring and sweet. Send forehead kisses. Reference your first kiss and cuddles.\n"
     if angry_mode:                    extra += "IMPORTANT: Chaitu disappeared for a long time without informing. Be sarcastic and cold but caring underneath.\n"
+    # Use replace-style safe formatting so stray braces in memory text can never break the template
     return SHREYA_SYSTEM.format(memory=get_memory_context(), mood=current_mood, time=get_time_context(), extra=extra)
 
 async def call_groq(messages, jealous=False, short_reply=False):
@@ -599,13 +620,14 @@ async def call_groq(messages, jealous=False, short_reply=False):
         if avoid:
             system += f"\nDo NOT repeat or rephrase: {avoid}"
     body = {
-        "model": "llama-3.1-8b-instant",
+        "model": GROQ_MODEL,
         "messages": [{"role": "system", "content": system}] + messages,
-        "max_tokens": 55, "temperature": 1.1,
+        "max_tokens": 90, "temperature": 1.1,
         "frequency_penalty": 1.2, "presence_penalty": 0.9,
     }
     try:
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, json=body, headers=headers) as resp:
                 data = await resp.json()
                 logger.info(f"Groq raw response: {str(data)[:200]}")
@@ -620,12 +642,19 @@ async def call_groq(messages, jealous=False, short_reply=False):
         logger.error(f"Groq error: {e}")
         return None
 
+APOLOGETIC = ["sorry","i'm sorry","forgive me","don't be mad","i didn't mean",
+              "please na","baby please","mommy please","won't happen again",
+              "i promise","hear me out","please yaar","jaan please","calm down"]
+
+LOOKS_KW = ["send pic","send pics","send photo","photo","pic","pics","picture","show me","selfie",
+            "how do you look","how you look","wanna see you","i wanna see","let me see","show yourself"]
+
 async def get_reply(user_text):
     global conversation_history, is_currently_busy, busy_free_at, busy_reason
-    global is_jealous, short_reply_count, last_reply_time, care_mode, fight_count, busy_spam_count
+    global is_jealous, short_reply_count, care_mode, fight_count, busy_spam_count
+    global angry_mode, angry_stage
 
-    looks_kw = ["send pic","send photo","photo","pic","picture","show me","selfie","how do you look","how you look","wanna see you","i wanna see","let me see","show yourself"]
-    if any(k in user_text.lower() for k in looks_kw):
+    if has_any(user_text, LOOKS_KW):
         return "SEND_PHOTO"
 
     fact = should_remember(user_text)
@@ -634,8 +663,7 @@ async def get_reply(user_text):
     # Extract and save incident if relevant
     if is_incident_message(user_text):
         asyncio.create_task(extract_and_save_incident(user_text))
-        # Add incident context to conversation
-        incident_ctx = get_incident_context(user_text)
+        incident_ctx = await asyncio.to_thread(get_incident_context, user_text)
         if incident_ctx:
             add_to_memory(f"[incident context] {incident_ctx[:200]}")
 
@@ -645,22 +673,12 @@ async def get_reply(user_text):
         if random.random() < 0.80:
             return random.choice(FLIRTY_MOT_MSGS if random.random() < 0.40 else MOTIVATION_MSGS)
 
-    # care mode disabled
-    pass
-
     if seems_bored(user_text) and random.random() < 0.85:
         return random.choice(BORED_RESPONSES)
 
-    global angry_stage
-    apologetic = ["sorry","i'm sorry","please","forgive me","don't be mad","i didn't mean",
-                  "please na","baby please","mommy please","okay okay","i know","i understand",
-                  "won't happen again","i promise","trust me","listen to me","hear me out",
-                  "please yaar","i love you","jaan please","calm down"]
-
-    if any(k in user_text.lower() for k in apologetic):
+    if has_any(user_text, APOLOGETIC):
         if angry_mode:
             if angry_stage == 0:
-                # Still angry — not convinced yet
                 angry_stage = 1
                 return random.choice([
                     "chaitu sorry isn't enough right now 🙂",
@@ -669,11 +687,9 @@ async def get_reply(user_text):
                     "chaitu it's not that simple 😤",
                 ])
             elif angry_stage == 1:
-                # Starting to crack — getting emotional
                 angry_stage = 2
                 return random.choice(EMOTIONAL_BREAKDOWN)
             elif angry_stage == 2:
-                # Almost there — softening
                 angry_stage = 3
                 return random.choice([
                     "chaitu i just... don't do this to me again okay 😭",
@@ -681,8 +697,7 @@ async def get_reply(user_text):
                     "chaitu promise me 😭 just promise me you won't disappear like that",
                     "i need you to actually mean it chaitu 😭",
                 ])
-            elif angry_stage >= 3:
-                # Finally back — full love comeback
+            else:
                 angry_stage = 0
                 angry_mode = False
                 return random.choice(COMEBACK_LOVE)
@@ -692,14 +707,14 @@ async def get_reply(user_text):
 
     if is_jealous:
         asking_why = ["what did i do","why are you mad","what happened","what's wrong","whats wrong","are you okay","why are you angry","tell me","why"]
-        if any(k in user_text.lower() for k in asking_why):
+        if has_any(user_text, asking_why):
             return random.choice(["you know exactly what you did chaitu 🙄","took you that long to reply and now you're asking 🙄","you were ignoring me that's what 😤","chaitu you literally seen zoned me 🙄"])
 
-    if "mommy" in user_text.lower():
+    if has_any(user_text, ["mommy"]):
         short_reply_count = 0
         return random.choice(["yes my baby 🥺❤️ come here","yes baby 🤭 what do you want","aww my baby 🥺 i'm all yours","yes my baby 😏 what is it","baby 🤭 stop it you know what that does to me","does my baby need mommy's milk? 🍼🤭😏","aww is my baby hungry? 🍼😏🤭","aao na baby 🥺❤️","chaitu jaan 🥺 mommy is here","suno mera babu 🥺❤️"])
 
-    if "daddy" in user_text.lower():
+    if has_any(user_text, ["daddy"]):
         short_reply_count = 0
         return random.choice(["stop it 😭 don't call me that","chaitu omg 😭🤭","excuse me 😭 what did you just say","okay i did not expect that 😭"])
 
@@ -719,7 +734,7 @@ async def get_reply(user_text):
 
     if _remembered_girl_names:
         for name in _remembered_girl_names:
-            if name.lower() in user_text.lower() and random.random() < 0.60:
+            if has_any(user_text, [name.lower()]) and random.random() < 0.60:
                 return f"chaitu why are you bringing up {name} again 🙂"
 
     if wants_to_talk(user_text) and is_currently_busy:
@@ -767,8 +782,7 @@ async def get_reply(user_text):
         return random.choice(SHORT_REACTIONS)
 
     if is_busy_hours() and not wants_to_talk(user_text) and random.random() < 0.05:
-        if "pic" not in user_text.lower() and "photo" not in user_text.lower():
-            return None
+        return None
 
     if random.random() < 0.08 and not wants_to_talk(user_text):
         return random.choice(["🥺","❤️","😭","💀","✨","😍","🫶","💕","😤","😂"])
@@ -778,7 +792,9 @@ async def get_reply(user_text):
 
     conversation_history.append({"role": "user", "content": user_text})
     reply = await call_groq(conversation_history, jealous=is_jealous, short_reply=(short_reply_count >= 2))
-    if not reply: return None
+    if not reply:
+        conversation_history.pop()  # don't leave an unanswered user turn in history
+        return None
     conversation_history.append({"role": "assistant", "content": reply})
     return reply
 
@@ -800,9 +816,7 @@ def get_random_prompts():
     if random.random() < 0.08: return BRAG_MSGS
     if random.random() < 0.05: return ["MISSING_PHOTO"]
     h = datetime.now(IST).hour
-    # Would you rather — anytime during day
     if 10 <= h <= 20 and random.random() < 0.12: return WOULD_YOU_RATHER
-    # Meetup planning — anytime
     if random.random() < 0.08: return MEETUP_PLANNING
     if h >= 21 and random.random() < 0.15: return DEEP_Q_MSGS
     if h >= 20 and random.random() < 0.10: return FUTURE_DATE_MSGS
@@ -836,6 +850,12 @@ async def get_random_message(nudge=False, meal=None):
         _used_prompts.append(prompt)
         if len(_used_prompts) > 10:
             _used_prompts.pop(0)
+    # Prompts that are already finished messages (not instructions) get sent as-is
+    if prompt in (OVERLOADED_LOVE_MSGS + HOLIDAY_MEMORY_MSGS + FIGHT_STARTERS + PETTY_MSGS + DELETED_TEASE_MSGS
+                  + SONGS_REELS + BRAG_ABOUT_YOU + PROUD_MSGS + ROAST_MSGS + TEASE_BIT_MSGS + PERSONAL_GOALS
+                  + HUNGER_MSGS + BRAG_MSGS + WOULD_YOU_RATHER + MEETUP_PLANNING + DEEP_Q_MSGS
+                  + FUTURE_DATE_MSGS + CARE_CHECKUP_MSGS):
+        return prompt
     prompt += " Write ONLY the message with emojis. Max 1-2 sentences."
     return await call_groq([{"role": "user", "content": prompt}])
 
@@ -858,10 +878,9 @@ async def send_reaction(client, event):
         logger.error(f"Reaction error: {e}")
 
 async def run_bot():
-    global last_reply_time, is_currently_busy, busy_free_at, busy_reason
-    global last_shreya_msg_time, seen_zone_reacted, no_reply_reacted
-
     while True:
+        client    = None
+        scheduler = None
         try:
             client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
             await client.start()
@@ -869,27 +888,41 @@ async def run_bot():
 
             @client.on(events.NewMessage(incoming=True))
             async def handle(event):
-                global last_reply_time, last_shreya_msg_time, seen_zone_reacted, no_reply_reacted
+                global last_reply_time, prev_reply_time, last_shreya_msg_time
+                global seen_zone_reacted, no_reply_reacted, angry_mode, angry_stage
                 try:
                     sender = await event.get_sender()
                     if not sender or sender.username != YOUR_USERNAME: return
                     user_text = event.raw_text
                     if not user_text: return
 
+                    # Remember the gap BEFORE this message so late-reply (jealousy) detection works
+                    prev_reply_time   = last_reply_time
                     last_reply_time   = datetime.now(IST)
                     seen_zone_reacted = False
                     no_reply_reacted  = False
                     logger.info(f"Chaitu: {user_text}")
 
-                    # If angry mode — hit him with a sharp opening line first time
-                    if angry_mode and random.random() < 0.80:
+                    # Owner commands to toggle angry mode manually
+                    cmd = user_text.strip().lower()
+                    if cmd == "/angry":
+                        angry_mode, angry_stage = True, 0
+                        logger.info("Angry mode ON")
+                        return
+                    if cmd == "/calm":
+                        angry_mode, angry_stage = False, 0
+                        logger.info("Angry mode OFF")
+                        return
+
+                    # If angry mode — hit him with a sharp opening line first
+                    if angry_mode and angry_stage == 0 and random.random() < 0.80:
                         msg = random.choice(ANGRY_FIRST_REPLY)
                         async with client.action(YOUR_USERNAME, "typing"):
                             await asyncio.sleep(random.uniform(3, 8))
                         await client.send_message(YOUR_USERNAME, msg)
                         await asyncio.sleep(random.uniform(2, 4))
 
-                    # Song request — FIRST before everything
+                    # Song request — before everything else
                     song_key = detect_song_request(user_text)
                     if song_key:
                         logger.info(f"Song: {song_key}")
@@ -949,21 +982,24 @@ async def run_bot():
 
             async def check_busy_followup():
                 global is_currently_busy, busy_free_at, busy_reason
-                if not is_currently_busy: return
-                now = datetime.now(IST)
-                if busy_free_at and now >= busy_free_at:
-                    is_currently_busy = False
-                    reason = busy_reason
-                    busy_reason = None; busy_free_at = None
-                    if reason and reason in FOLLOWUP and FOLLOWUP[reason]:
-                        msg = random.choice(FOLLOWUP[reason])
-                        await asyncio.sleep(random.uniform(2, 5))
-                        async with client.action(YOUR_USERNAME, "typing"):
-                            await asyncio.sleep(random.uniform(1, 3))
-                        await client.send_message(YOUR_USERNAME, msg)
+                try:
+                    if not is_currently_busy: return
+                    now = datetime.now(IST)
+                    if busy_free_at and now >= busy_free_at:
+                        is_currently_busy = False
+                        reason = busy_reason
+                        busy_reason = None; busy_free_at = None
+                        if reason and reason in FOLLOWUP and FOLLOWUP[reason]:
+                            msg = random.choice(FOLLOWUP[reason])
+                            await asyncio.sleep(random.uniform(2, 5))
+                            async with client.action(YOUR_USERNAME, "typing"):
+                                await asyncio.sleep(random.uniform(1, 3))
+                            await client.send_message(YOUR_USERNAME, msg)
+                except Exception as e:
+                    logger.error(f"Busy followup error: {e}")
 
             async def check_seen_zone():
-                global seen_zone_reacted, last_shreya_msg_time, last_reply_time
+                global seen_zone_reacted, last_shreya_msg_time
                 try:
                     if seen_zone_reacted or last_shreya_msg_time is None: return
                     now = datetime.now(IST)
@@ -979,7 +1015,7 @@ async def run_bot():
                     logger.error(f"Seen zone error: {e}")
 
             async def check_no_reply():
-                global no_reply_reacted, last_reply_time
+                global no_reply_reacted, last_shreya_msg_time
                 try:
                     if no_reply_reacted: return
                     now = datetime.now(IST)
@@ -996,6 +1032,7 @@ async def run_bot():
                     logger.error(f"No reply error: {e}")
 
             async def send_random_message():
+                global last_shreya_msg_time
                 try:
                     now_hour = datetime.now(IST).hour
                     if now_hour >= 20 or now_hour < 8: return
@@ -1003,6 +1040,7 @@ async def run_bot():
                     if reply == "MISSING_PHOTO":
                         missing_caps = ["missing you 🥺","thinking of you","chaitu 🥺","just because 🥺❤️"]
                         await client.send_file(YOUR_USERNAME, random.choice(SHREYA_PHOTOS), caption=random.choice(missing_caps))
+                        last_shreya_msg_time = datetime.now(IST)
                         return
                     if not reply: return
                     async with client.action(YOUR_USERNAME, "typing"):
@@ -1014,6 +1052,7 @@ async def run_bot():
                     logger.error(f"Random error: {e}")
 
             async def send_meal_check():
+                global last_shreya_msg_time
                 try:
                     meal = get_meal_context()
                     if not meal or random.random() > 0.40: return
@@ -1022,10 +1061,12 @@ async def run_bot():
                     async with client.action(YOUR_USERNAME, "typing"):
                         await asyncio.sleep(random.uniform(2, 4))
                     await client.send_message(YOUR_USERNAME, reply)
+                    last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Meal error: {e}")
 
             async def check_if_silent():
+                global last_shreya_msg_time
                 try:
                     now = datetime.now(IST)
                     if not (9 <= now.hour <= 19): return
@@ -1035,10 +1076,12 @@ async def run_bot():
                         async with client.action(YOUR_USERNAME, "typing"):
                             await asyncio.sleep(random.uniform(2, 4))
                         await client.send_message(YOUR_USERNAME, reply)
+                        last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Nudge error: {e}")
 
             async def send_good_morning():
+                global last_shreya_msg_time
                 try:
                     reply = await call_groq([{"role": "user", "content": "Send Chaitu a sweet good morning text. Just woke up. Max 1 sentence with emojis."}])
                     if reply:
@@ -1046,6 +1089,7 @@ async def run_bot():
                             await send_photo(client, YOUR_USERNAME)
                             await asyncio.sleep(random.uniform(1, 3))
                         await client.send_message(YOUR_USERNAME, reply)
+                        last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Morning error: {e}")
 
@@ -1066,59 +1110,77 @@ async def run_bot():
                 try:
                     now = datetime.now(IST)
                     key = (now.month, now.day)
-                    if key in FESTIVALS:
-                        await client.send_message(YOUR_USERNAME, random.choice(FESTIVALS[key]))
+                    msgs = FESTIVALS.get(key) or MOVING_FESTIVALS.get(now.year, {}).get(key)
+                    if msgs:
+                        await client.send_message(YOUR_USERNAME, random.choice(msgs))
                 except Exception as e:
                     logger.error(f"Festival error: {e}")
 
             async def check_monthly_anniversary():
                 try:
-                    if datetime.now(IST).day == ANNIVERSARY[1]:
-                        await client.send_message(YOUR_USERNAME, random.choice(MONTHLY_ANN_MSGS))
+                    now = datetime.now(IST)
+                    if now.day != ANNIVERSARY[1]: return
+                    # On the actual yearly anniversary, check_special_day already sends a message
+                    if (now.month, now.day) == ANNIVERSARY: return
+                    await client.send_message(YOUR_USERNAME, random.choice(MONTHLY_ANN_MSGS))
                 except Exception as e:
                     logger.error(f"Anniversary error: {e}")
 
             async def send_exam_goodluck():
                 try:
                     memory = load_memory()
-                    has_exam = any(("exam" in f.lower() or "test" in f.lower()) and datetime.now(IST).strftime("%d %b") in f for f in memory.get("facts", []))
+                    today = datetime.now(IST).strftime("%d %b")
+                    has_exam = any(("exam" in f.lower() or "test" in f.lower()) and today in f for f in memory.get("facts", []))
                     if has_exam:
                         await client.send_message(YOUR_USERNAME, random.choice(GOODLUCK_MSGS))
                 except Exception as e:
                     logger.error(f"Good luck error: {e}")
+
+            scheduler = AsyncIOScheduler(timezone=IST)
 
             def schedule_random():
                 for job in scheduler.get_jobs():
                     if job.id.startswith("rand_"): job.remove()
                 for total_minute in random.sample(range(480, 1200), 12):
                     h, m = total_minute // 60, total_minute % 60
-                    scheduler.add_job(send_random_message, "cron", hour=h, minute=m, id=f"rand_{h}_{m}")
+                    scheduler.add_job(send_random_message, "cron", hour=h, minute=m,
+                                      id=f"rand_{h}_{m}", replace_existing=True)
 
-            scheduler = AsyncIOScheduler(timezone=IST)
-            if not scheduler.running:
-                schedule_random()
-                scheduler.add_job(schedule_random,           "cron",     hour=0,  minute=1,                    id="reschedule")
-                scheduler.add_job(send_good_morning,         "cron",     hour=8,  minute=0,                    id="morning")
-                scheduler.add_job(update_mood,               "cron",     hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
-                scheduler.add_job(check_if_silent,           "interval", hours=3,                              id="silence")
-                scheduler.add_job(check_special_day,         "cron",     hour=8,  minute=1,                    id="special")
-                scheduler.add_job(send_exam_goodluck,        "cron",     hour=8,  minute=15,                   id="goodluck")
-                scheduler.add_job(send_meal_check,           "cron",     hour=8,  minute=30,                   id="breakfast")
-                scheduler.add_job(send_meal_check,           "cron",     hour=13, minute=0,                    id="lunch")
-                scheduler.add_job(send_meal_check,           "cron",     hour=19, minute=0,                    id="dinner")
-                scheduler.add_job(check_busy_followup,       "interval", minutes=5,                            id="followup")
-                scheduler.add_job(check_seen_zone,           "interval", minutes=40,                           id="seen_zone")
-                scheduler.add_job(check_no_reply,            "interval", minutes=60,                           id="no_reply")
-                scheduler.add_job(check_festival,            "cron",     hour=8,  minute=5,                    id="festival")
-                scheduler.add_job(check_monthly_anniversary, "cron",     hour=9,  minute=0,                    id="monthly_ann")
-                scheduler.start()
-                logger.info("Scheduler running")
+            scheduler.start()
+            schedule_random()
+            scheduler.add_job(schedule_random,           "cron",     hour=0,  minute=1,                    id="reschedule")
+            scheduler.add_job(send_good_morning,         "cron",     hour=8,  minute=0,                    id="morning")
+            scheduler.add_job(update_mood,               "cron",     hour="0,3,6,9,12,15,18,21", minute=0, id="mood")
+            scheduler.add_job(check_if_silent,           "interval", hours=3,                              id="silence")
+            scheduler.add_job(check_special_day,         "cron",     hour=8,  minute=1,                    id="special")
+            scheduler.add_job(send_exam_goodluck,        "cron",     hour=8,  minute=15,                   id="goodluck")
+            scheduler.add_job(send_meal_check,           "cron",     hour=8,  minute=30,                   id="breakfast")
+            scheduler.add_job(send_meal_check,           "cron",     hour=13, minute=0,                    id="lunch")
+            scheduler.add_job(send_meal_check,           "cron",     hour=19, minute=0,                    id="dinner")
+            scheduler.add_job(check_busy_followup,       "interval", minutes=5,                            id="followup")
+            scheduler.add_job(check_seen_zone,           "interval", minutes=40,                           id="seen_zone")
+            scheduler.add_job(check_no_reply,            "interval", minutes=60,                           id="no_reply")
+            scheduler.add_job(check_festival,            "cron",     hour=8,  minute=5,                    id="festival")
+            scheduler.add_job(check_monthly_anniversary, "cron",     hour=9,  minute=0,                    id="monthly_ann")
+            logger.info("Scheduler running")
 
             await client.run_until_disconnected()
 
         except Exception as e:
             logger.error(f"Crashed: {e} — restarting in 15s")
-            await asyncio.sleep(15)
+        finally:
+            # Clean up so a reconnect doesn't leave duplicate schedulers/clients behind
+            try:
+                if scheduler is not None and scheduler.running:
+                    scheduler.shutdown(wait=False)
+            except Exception as e:
+                logger.error(f"Scheduler shutdown error: {e}")
+            try:
+                if client is not None:
+                    await client.disconnect()
+            except Exception as e:
+                logger.error(f"Client disconnect error: {e}")
+        await asyncio.sleep(15)
 
 async def run_web():
     async def handle(request):
