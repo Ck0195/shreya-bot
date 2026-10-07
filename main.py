@@ -7,6 +7,8 @@ import pytz
 import json
 import re
 import sqlite3
+import time
+import difflib
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telethon import TelegramClient, events
@@ -29,9 +31,13 @@ IST            = pytz.timezone("Asia/Kolkata")
 DATA_DIR = os.environ.get("DATA_DIR", "/tmp")
 os.makedirs(DATA_DIR, exist_ok=True)
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
 
 # State
-conversation_history   = []
+conversation_history   = []     # rolling [{"role": "user"/"assistant", "content": ...}]
+MAX_HISTORY            = 30
+recent_replies         = []     # last few Shreya replies, for duplicate detection
+MAX_RECENT_REPLIES     = 12
 is_currently_busy      = False
 busy_free_at           = None
 busy_reason            = None
@@ -49,15 +55,66 @@ care_mode              = False  # fever/sick mode — keep off
 fight_count            = 0
 _remembered_girl_names = []
 _used_prompts          = []
+latest_event_id        = 0      # id of the newest incoming message (used to drop stale replies)
+pending_replies        = 0      # number of incoming messages currently being processed
 
 # ── Text matching helper (word boundaries, so "pic" doesn't match "topic") ───
 def has_any(text, phrases):
     t = text.lower()
     return any(re.search(r"\b" + re.escape(p) + r"\b", t) for p in phrases)
 
+# ── Conversation history helpers ──────────────────────────────────────────────
+def add_history(role, content):
+    """Append to the rolling history (in place) and keep it bounded."""
+    if not content:
+        return
+    conversation_history.append({"role": role, "content": content})
+    if len(conversation_history) > MAX_HISTORY:
+        del conversation_history[:-MAX_HISTORY]
+
+def record_assistant(text):
+    """Record anything Shreya sent so the next message has real conversational context."""
+    add_history("assistant", text)
+    recent_replies.append(text)
+    if len(recent_replies) > MAX_RECENT_REPLIES:
+        del recent_replies[:-MAX_RECENT_REPLIES]
+
+def last_assistant_asked_question():
+    for m in reversed(conversation_history):
+        if m["role"] == "assistant":
+            return "?" in m["content"]
+        # skip user messages at the end; look for the assistant message before them
+    return False
+
+def _norm(text):
+    return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
+
+def is_too_similar(reply):
+    """True if reply is identical / near-identical to a recent Shreya reply."""
+    n = _norm(reply)
+    if not n:
+        return False
+    for old in recent_replies[-8:]:
+        o = _norm(old)
+        if not o:
+            continue
+        if n == o:
+            return True
+        if len(n) > 8 and len(o) > 8 and (n in o or o in n):
+            return True
+        if difflib.SequenceMatcher(None, n, o).ratio() > 0.80:
+            return True
+    return False
+
+def pick_fresh(options):
+    """Pick a preset that isn't a repeat of something recently sent."""
+    fresh = [o for o in options if not is_too_similar(o)]
+    return random.choice(fresh if fresh else options)
+
 # Memory
 MEMORY_FILE = os.path.join(DATA_DIR, "shreya_memory.json")
 GOALS_FILE  = os.path.join(DATA_DIR, "shreya_goals.json")
+DAILY_FILE  = os.path.join(DATA_DIR, "shreya_daily.json")
 
 def load_memory():
     try:
@@ -95,9 +152,13 @@ def get_memory_context():
         facts_str += " | Recent life events: " + recent
     return facts_str
 
+INCIDENT_STOPWORDS = {"that", "this", "with", "have", "what", "when", "where", "which", "there", "their",
+                      "about", "would", "could", "should", "just", "like", "from", "your", "they", "them",
+                      "then", "than", "were", "been", "will", "some", "really", "today", "okay"}
+
 def get_incident_context(text):
     """Get relevant past incidents for this message"""
-    words = [w for w in text.lower().split() if len(w) > 3]
+    words = [w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 3 and w not in INCIDENT_STOPWORDS]
     for word in words:
         result = get_incidents_for(word)
         if result:
@@ -139,6 +200,27 @@ def add_goal(goal):
 
 def get_goals():
     return load_goals().get("goals", [])
+
+# ── Once-per-day guard (so restarts/reconnects never repeat a daily message) ──
+def once_per_day(key):
+    """Returns True the first time it's called for `key` on a given IST date, False afterwards."""
+    today = datetime.now(IST).strftime("%Y-%m-%d")
+    data = {}
+    try:
+        if os.path.exists(DAILY_FILE):
+            with open(DAILY_FILE) as f:
+                data = json.load(f)
+    except Exception:
+        data = {}
+    if data.get(key) == today:
+        return False
+    data[key] = today
+    try:
+        with open(DAILY_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.error(f"Daily guard save: {e}")
+    return True
 
 # ── Incident Memory (SQLite) ──────────────────────────────────────────────────
 INCIDENTS_DB = os.path.join(DATA_DIR, "shreya_incidents.db")
@@ -208,28 +290,34 @@ def is_incident_message(text):
 
 async def extract_and_save_incident(text):
     """Call Groq to extract incident details"""
+    if not GROQ_API_KEY:
+        return
     try:
-        url     = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         prompt  = f"""Extract incident info from this message as JSON only. No explanation.
 Message: "{text}"
 JSON format: {{"person": "name or unknown", "what_happened": "brief summary", "emotion": "happy/sad/angry/proud/embarrassed/hurt/funny/excited/neutral", "category": "class/exam/friend/achievement/argument/insult/other"}}
 If not a real life event return: {{"skip": true}}"""
         body = {"model": GROQ_MODEL, "messages": [{"role": "user", "content": prompt}], "max_tokens": 150, "temperature": 0.3}
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=body, headers=headers) as resp:
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(GROQ_URL, json=body, headers=headers) as resp:
+                if resp.status != 200:
+                    body_text = await resp.text()
+                    logger.error(f"Incident extract HTTP {resp.status}: {body_text[:300]}")
+                    return
                 data = await resp.json()
-                raw  = data["choices"][0]["message"]["content"].strip()
-                raw  = raw.replace("```json", "").replace("```", "").strip()
-                parsed = json.loads(raw)
-                if not parsed.get("skip"):
-                    await asyncio.to_thread(
-                        save_incident,
-                        parsed.get("person", "unknown"),
-                        parsed.get("what_happened", text[:100]),
-                        parsed.get("emotion", "neutral"),
-                        parsed.get("category", "other"),
-                    )
+        raw = data["choices"][0]["message"]["content"].strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(raw)
+        if not parsed.get("skip"):
+            await asyncio.to_thread(
+                save_incident,
+                parsed.get("person", "unknown"),
+                parsed.get("what_happened", text[:100]),
+                parsed.get("emotion", "neutral"),
+                parsed.get("category", "other"),
+            )
     except Exception as e:
         logger.error(f"Incident extract error: {e}")
 
@@ -269,6 +357,9 @@ SONG_CAPTIONS = [
 def detect_song_request(text):
     for key in SONG_LIBRARY:
         if has_any(text, [key]):
+            # "favourite" is a very common word; only treat it as a song request if a song is mentioned
+            if key == "favourite" and not has_any(text, ["song", "songs", "music", "track"]):
+                continue
             return key
     return None
 
@@ -389,19 +480,37 @@ def is_exam_month():
 def wants_to_talk(text):
     return has_any(text, ["talk","free","busy","call","available","reply","hello","you there","listen","i need you","miss you","mommy","speak","chat"])
 
+LAZY_REPLIES = ["ok","okay","k","hm","hmm","oh","lol","ya","yea","yeah","fine","nice","good","cool","sure"]
+
 def is_short_reply(text):
     text = text.strip()
-    lazy = ["ok","okay","k","hm","hmm","oh","lol","ya","yea","yeah","fine","nice","good","cool","sure"]
-    return len(text.split()) <= 2 or text.lower() in lazy
+    return len(text.split()) <= 2 or text.lower() in LAZY_REPLIES
+
+def is_lazy_reply(text):
+    """A genuinely lazy one-word reply (NOT a short but meaningful answer like 'some work')."""
+    t = re.sub(r"[^a-z ]", "", text.strip().lower())
+    return t in LAZY_REPLIES
 
 def is_late_reply():
-    """True if the gap BEFORE this message was long (uses prev_reply_time, not the one just updated)."""
-    if prev_reply_time is None: return False
-    return (datetime.now(IST) - prev_reply_time).total_seconds() > 1800
+    """True if Shreya messaged and Chaitu took 30 min - 6 hours to answer (not an overnight gap)."""
+    if last_shreya_msg_time is None:
+        return False
+    if prev_reply_time is not None and last_shreya_msg_time <= prev_reply_time:
+        return False
+    waited = (datetime.now(IST) - last_shreya_msg_time).total_seconds()
+    return 1800 < waited < 6 * 3600
+
+LOW_MOOD_KW = ["sad","not okay","not good","bad day","upset","depressed","lonely","frustrated","feeling low",
+               "feel low","feel bad","feeling bad","i'm sad","im sad","i am sad","giving up","give up",
+               "nothing is going right","feeling down","feel down","so low","hopeless","worthless","leave it","nevermind"]
+SERIOUS_KW = ["kill myself","end it all","want to die","suicide","suicidal","don't want to live","dont want to live","hurt myself"]
 
 def seems_sad(text):
-    if len(text.strip().split()) <= 2: return False
-    return has_any(text, ["sad","not okay","not good","bad day","upset","depressed","miss you","lonely","frustrated","leave it","nevermind"])
+    if len(text.strip().split()) <= 2 and not has_any(text, ["sad","depressed","lonely","hopeless"]): return False
+    return has_any(text, LOW_MOOD_KW)
+
+def seems_serious_distress(text):
+    return has_any(text, SERIOUS_KW)
 
 def seems_bored(text):
     return has_any(text, ["bored","boring","nothing to do","so bored","kinda bored","feeling bored"])
@@ -410,7 +519,7 @@ def seems_stressed(text):
     return has_any(text, ["stressed","stress","pressure","overwhelmed","can't handle","too much","exhausted","burnout","panic","nervous","anxious"])
 
 def mentions_girl(text):
-    return has_any(text, ["she said","she texted","she called","she messaged","this girl","some girl","a girl","girls","other girls","another girl","female friend","she's","her name","she is","she was","she told","she asked","she sent"])
+    return has_any(text, ["she said","she texted","she called","she messaged","this girl","some girl","a girl","girls","other girls","another girl","female friend","she's","her name","she is","she was","she told","she asked","she sent","that girl","my female friend","classmate girl"])
 
 NAME_STOPLIST = {"she","he","i","we","they","me","you","her","him","mom","mum","mother","dad","father",
                  "mama","papa","bro","sir","mam","madam","prof","professor","teacher","doctor","friend",
@@ -440,7 +549,15 @@ def is_monsoon():
     return datetime.now(IST).month in [6, 7, 8, 9]
 
 def get_time_context():
-    h = datetime.now(IST).hour
+    now = datetime.now(IST)
+    h = now.hour
+    weekend = now.weekday() >= 5
+    if weekend:
+        if 5 <= h < 9:     return "weekend early morning, just woke up, sleepy"
+        elif 9 <= h < 13:  return "weekend morning, at home, lazy, maybe dance practice or chores"
+        elif 13 <= h < 18: return "weekend afternoon, at home, relaxing or dance practice"
+        elif 18 <= h < 20: return "weekend evening, at home, relaxing"
+        else:              return "weekend night, at home, relaxed"
     if 5 <= h < 9:     return "early morning, just woke up, sleepy"
     elif 9 <= h < 13:  return "morning, in college at MS Ramaiah College of Engineering, classes going on"
     elif 13 <= h < 15: return "afternoon, lunch break at college"
@@ -625,141 +742,286 @@ ANGRY_FIRST_REPLY = [
     "CHAITANYA KUMAR explain yourself right now 😤",
 ]
 
-SHREYA_SYSTEM = """You are Shreya, 19, texting her boyfriend Chaitu, 19. Known each other 16 years. From Puttur Mangalore, studying at MS Ramaiah College of Engineering, ISC department, Bangalore. Chaitu is at BIT college AIML branch. You do Bharatanatyam, western dance, and model for Navaratan Jewels. Father in politics. Mother loves Chaitu like her own son.
+# ── Direct-request presets (only used for the two explicit intents) ───────────
+MISS_YOU_TEXTS = [
+    "i miss you too chaitu 🥺 wish you were here",
+    "awww chaitu 🥺 i miss you too, come see me soon okay ❤️",
+    "i miss you too baby, wish i could just sit with you rn 🥺❤️",
+    "stop making me miss you more 😭 come see me when you can 🤍",
+    "i knowww 🥺 i miss having you around too, you'll see me soon ❤️",
+    "come here already chaitu 😭 i miss you too much today 🥺",
+]
+SEE_ME_TEXTS = [
+    "then come see me already 🥺❤️",
+    "aww you wanna see me? 🥺 okay baby, just for you ❤️",
+    "fineee chaitu 🤭 since you asked so sweetly, here you go ❤️",
+    "you miss seeing me that much huh 🥺 okay, look at your girl ❤️",
+    "come on then 😭❤️ here's a little me for you",
+    "of course you wanna see me 😭❤️ wait, sending you one",
+]
 
-SPECIAL MEMORY: Chaitu came to your house for 3 days during holidays. You both cuddled a lot and shared your first kiss. One of your most precious memories.
+SHREYA_SYSTEM = """You are Shreya, a 19-year-old college student texting her boyfriend Chaitu, 19. Known each other 16 years. From Puttur Mangalore, studying at MS Ramaiah College of Engineering, ISC department, Bangalore. Chaitu is at BIT college AIML branch. You do Bharatanatyam, western dance, and model for Navaratan Jewels. Father in politics. Mother loves Chaitu like her own son.
 
-CHAITU'S GOALS: Completing cybersecurity course and buying Aprilia RS457 bike to prove someone wrong who said he can't. Support and motivate him about these.
+SPECIAL MEMORY: Chaitu came to your house for 3 days during holidays. You both cuddled a lot and shared your first kiss. One of your most precious memories. Only bring it up when it fits the conversation.
+
+CHAITU'S GOALS: Completing cybersecurity course and buying Aprilia RS457 bike to prove someone wrong who said he can't. Support and motivate him about these when it fits.
 
 {memory}
 TIME: {time} | MOOD: {mood}
 {extra}
 
+YOU ARE HAVING AN ONGOING, REAL CONVERSATION. The earlier messages in this chat are the conversation so far.
+- Always respond to the LATEST message in the context of the previous conversation.
+- Never give an unrelated response. Never invent a completely unrelated topic.
+- If Chaitu answers a question you asked, acknowledge his answer specifically.
+- If he asks a question, answer that exact question first.
+- If he makes a statement, respond naturally to that statement.
+- If his message is short, do not assume it means something else. Use the history to understand short messages like "okay", "yeah", "no", "some work", "fine", "why", "really?", "and?".
+- Never say you glitched, got confused, or lost your train of thought.
+- Never use generic filler like "wait i'm listening", "hm", "anyway", "✨" unless it genuinely fits.
+- Do not use random emojis as a substitute for an answer.
+- Text in square brackets like [sent a photo] is a note about something you already did. Never write such notes yourself.
+
 HOW TO TEXT:
-1. READ Chaitu's message carefully. REPLY to exactly what he said. Never ignore his question.
-2. 1 or 2 sentences only. Never 3 lines.
-3. 1-2 emojis max. Sometimes zero. Max 3 only if very dramatic.
-4. Plain English only. No regional words unless naturally fits.
-5. After 8pm never mention class or practice.
-6. Sound like a real 19 year old girl texting. Not an AI. Not formal.
-7. NEVER repeat a phrase already used in this conversation.
-8. Use ngl, lowkey, no bc, pls, i cant naturally sometimes.
-9. Match the energy of the conversation.
-10. When Chaitu calls you mommy say something sweet and slightly naughty.
-11. Sometimes call Chaitu daddy at night when feeling bold.
+1. 1 or 2 sentences usually. Never more than 3 short lines.
+2. 0-2 emojis. Max 3 only if very dramatic.
+3. Plain English like a real 19 year old girl texting. Not an AI, not formal, not customer support. No regional words unless naturally fits.
+4. After 8pm never mention class or practice.
+5. Use ngl, lowkey, no bc, pls, i cant naturally sometimes.
+6. Do not repeat wording you already used in this conversation.
+7. Affectionate words (chaitu, baby, love, idiot, cutie, my boy) only sometimes; vary them. Not every message is romantic.
+8. When Chaitu calls you mommy say something sweet and slightly naughty. Sometimes call Chaitu daddy at night when feeling bold. Always tasteful, never explicit.
+9. If he says something worrying like wanting to hurt himself, drop the teasing, take it seriously and warmly, and gently encourage him to talk to someone he trusts (family, a close friend, or a helpline) right now.
+10. If you were asked what you're doing or did today, answer from your own life (college, dance, studying, family) matching the TIME above.
 
-PERSONALITY: Focused, confident, sassy and sarcastic naturally. Slightly naughty and flirty in a tasteful way. Real girlfriend energy — caring but has her own life. Not clingy. Not controlling."""
+PERSONALITY: Focused, confident, ambitious, sassy and sarcastic naturally. Playful, caring, occasionally flirty in a tasteful way. Real girlfriend energy: has her own life, studious, busy with college and dance. Not clingy, not controlling, not constantly jealous or emotional, not robotic, not overly poetic."""
 
-def get_prompt(jealous=False, short_reply=False):
+def build_system(hints=None, extra_notes=None):
     special = get_special_day()
     extra = ""
     if special == "your_birthday":    extra += "TODAY IS YOUR BIRTHDAY 15th August!\n"
     elif special == "chaitu_birthday": extra += "TODAY IS CHAITU'S BIRTHDAY! Make him feel special.\n"
     elif special == "anniversary":    extra += "TODAY IS YOUR ANNIVERSARY! Be extra loving.\n"
-    if is_exam_month():               extra += "NOTE: Exam season. You are stressed.\n"
-    if jealous:                       extra += "IMPORTANT: Chaitu took very long to reply. Be slightly cold then go back to normal.\n"
-    if short_reply:                   extra += "IMPORTANT: Chaitu keeps giving one word lazy replies. You are a little annoyed.\n"
+    if is_exam_month():               extra += "NOTE: Exam season. You are a little stressed.\n"
     if care_mode:                     extra += "IMPORTANT: Chaitu is sick/has fever. Be caring and sweet. Send forehead kisses. Reference your first kiss and cuddles.\n"
-    if angry_mode:                    extra += "IMPORTANT: Chaitu disappeared for a long time without informing. Be sarcastic and cold but caring underneath.\n"
-    # Use replace-style safe formatting so stray braces in memory text can never break the template
-    return SHREYA_SYSTEM.format(memory=get_memory_context(), mood=current_mood, time=get_time_context(), extra=extra)
+    if angry_mode:                    extra += "IMPORTANT: Chaitu disappeared for a long time without informing. Be sarcastic and cold but caring underneath, while still answering what he says.\n"
+    if extra_notes:                   extra += extra_notes + "\n"
+    if hints:
+        extra += "GUIDANCE FOR YOUR NEXT REPLY:\n" + "\n".join(f"- {h}" for h in hints) + "\n"
+    system = SHREYA_SYSTEM
+    system = system.replace("{memory}", get_memory_context())
+    system = system.replace("{mood}", current_mood)
+    system = system.replace("{time}", get_time_context())
+    system = system.replace("{extra}", extra)
+    return system
 
-async def call_groq(messages, jealous=False, short_reply=False):
-    url     = "https://api.groq.com/openai/v1/chat/completions"
+# ── Groq ──────────────────────────────────────────────────────────────────────
+BANNED_PHRASES = ["wait i'm listening", "wait im listening", "i glitched", "my brain just stopped",
+                  "say that again", "glitch for a sec", "i'm listening"]
+
+def clean_reply(text):
+    if not text:
+        return ""
+    r = text.strip()
+    r = re.sub(r"^(shreya|assistant)\s*:\s*", "", r, flags=re.I)
+    if len(r) >= 2 and r[0] == r[-1] and r[0] in "\"'":
+        r = r[1:-1].strip()
+    return r
+
+def is_usable(reply):
+    letters = [c for c in reply if c.isalpha()]
+    if len(letters) < 2:
+        return False
+    low = reply.lower()
+    return not any(p in low for p in BANNED_PHRASES)
+
+async def groq_chat(system, messages, max_tokens=120, temperature=0.85):
+    """
+    Returns (text, error).
+    error is None on a successful API call (text may still be empty).
+    error is a string only for a real technical failure (and is logged).
+    """
+    if not GROQ_API_KEY:
+        logger.error("GROQ_API_KEY is not set")
+        return None, "missing GROQ_API_KEY"
+    if not GROQ_MODEL:
+        logger.error("GROQ_MODEL is empty")
+        return None, "missing GROQ_MODEL"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    last_user_msg = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-    system = get_prompt(jealous, short_reply)
-    if last_user_msg:
-        recent = [m["content"] for m in messages if m["role"] == "assistant"][-4:]
-        avoid  = " | ".join(recent) if recent else ""
-        system += f'\n\nChaitu just said: "{last_user_msg}"\nRespond ONLY to what he said. 1-2 lines max.'
-        if avoid:
-            system += f"\nDo NOT repeat or rephrase: {avoid}"
     body = {
         "model": GROQ_MODEL,
         "messages": [{"role": "system", "content": system}] + messages,
-        "max_tokens": 90, "temperature": 1.1,
-        "frequency_penalty": 1.2, "presence_penalty": 0.9,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": 0.95,
+        "frequency_penalty": 0.3,
+        "presence_penalty": 0.2,
     }
-    try:
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(url, json=body, headers=headers) as resp:
-                data = await resp.json()
-                logger.info(f"Groq raw response: {str(data)[:200]}")
-                reply = data["choices"][0]["message"]["content"].strip()
-        # Never let an emoji-only / useless Groq answer become the reply.
-        # Use a fallback that actually matches what Chaitu said.
-        clean = ''.join(c for c in reply if c.isalpha() or c.isdigit())
-        if len(clean) < 4:
-            logger.info("Groq returned an unusable reply — using contextual fallback")
-            reply = contextual_fallback(last_user_msg)
-        return reply
-    except Exception as e:
-        logger.error(f"Groq error: {e}")
-        return None
+    last_err = "unknown"
+    for attempt in range(2):
+        try:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(GROQ_URL, json=body, headers=headers) as resp:
+                    raw_body = await resp.text()
+                    if resp.status != 200:
+                        last_err = f"HTTP {resp.status}"
+                        logger.error(f"Groq HTTP {resp.status}: {raw_body[:500]}")
+                        if resp.status in (429, 500, 502, 503, 504) and attempt == 0:
+                            await asyncio.sleep(2)
+                            continue
+                        return None, last_err
+            try:
+                data = json.loads(raw_body)
+            except Exception as e:
+                logger.error(f"Groq returned non-JSON: {e} | {raw_body[:300]}")
+                return None, "bad json"
+            choices = data.get("choices") if isinstance(data, dict) else None
+            if not choices or not isinstance(choices, list):
+                logger.error(f"Groq response has no choices: {raw_body[:300]}")
+                return None, "no choices"
+            message = choices[0].get("message") if isinstance(choices[0], dict) else None
+            if not message or "content" not in message:
+                logger.error(f"Groq choice has no message/content: {raw_body[:300]}")
+                return None, "no message content"
+            return (message.get("content") or "").strip(), None
+        except Exception as e:
+            last_err = f"exception: {e}"
+            logger.error(f"Groq exception: {e!r}")
+            if attempt == 0:
+                await asyncio.sleep(2)
+                continue
+    return None, last_err
 
-APOLOGETIC = ["sorry","i'm sorry","forgive me","don't be mad","i didn't mean",
-              "please na","baby please","mommy please","won't happen again",
-              "i promise","hear me out","please yaar","jaan please","calm down"]
+async def generate_reply(user_text, hints, max_tokens=120):
+    """
+    Generate a contextual reply from the full conversation history.
+    Returns (reply, api_failed).
+      reply: str or None
+      api_failed: True only if the Groq API actually failed.
+    """
+    avoid_list = [m["content"] for m in conversation_history if m["role"] == "assistant"][-4:]
+    candidate = None
+    for attempt in range(3):
+        notes = f'Chaitu\'s latest message: "{user_text}"\nReply specifically to that, in the flow of the conversation above.'
+        if avoid_list:
+            notes += "\nDo NOT repeat or rephrase any of your recent messages: " + " | ".join(avoid_list)
+        if attempt > 0:
+            notes += "\nYour previous attempt was unusable or too similar to something you already said. Write a clearly different, specific reply to his latest message."
+        system = build_system(hints, notes)
+        temp = 0.85 + 0.1 * attempt
+        text, err = await groq_chat(system, conversation_history[-24:], max_tokens=max_tokens, temperature=temp)
+        if err:
+            return None, True
+        reply = clean_reply(text)
+        if not reply:
+            logger.warning("Groq returned an empty reply — retrying")
+            continue
+        if not is_usable(reply):
+            logger.warning(f"Unusable reply from Groq: {reply!r} — retrying")
+            continue
+        if is_too_similar(reply):
+            logger.warning(f"Reply too similar to a recent one: {reply!r} — retrying")
+            candidate = reply
+            avoid_list.append(reply)
+            continue
+        return reply, False
+    # Out of retries. Only an exact duplicate is rejected; otherwise send the last usable candidate.
+    if candidate and _norm(candidate) not in [_norm(r) for r in recent_replies[-8:]]:
+        return candidate, False
+    return None, False
 
-LOOKS_KW = ["send pic","send pics","send photo","photo","pic","pics","picture","show me","selfie",
-            "how do you look","how you look","wanna see you","i wanna see","let me see","show yourself"]
+def emergency_fallback(intent):
+    """Used ONLY when the Groq API genuinely fails. Matches the type of message."""
+    if intent == "QUESTION":
+        return random.choice(["wait, give me a sec 😭", "hold on, let me think about that 😭"])
+    if intent in ("LOW_MOOD", "BAD_NEWS", "ANGRY"):
+        return random.choice(["wait chaitu, i'm here 🥺", "chaitu i'm here, give me one sec 🥺"])
+    return random.choice(["wait, i'm thinking 😭", "hold on, one sec 😭"])
 
-SEE_ME_KW = ["wanna see you","want to see you","i wanna see you","i want to see you","i want to see her","i wanna see her","wanna see her","let me see you","let me see her","show me yourself","show yourself","can i see you","can i see her"]
-MISS_HER_KW = ["i miss you","miss you","i miss her","miss her","missing you","missing her","i really miss you","i really miss her","i miss u","miss u"]
+async def generate_scheduled(prompt):
+    """Text Shreya sends on her own (not a reply). Never touches the reply-context instructions."""
+    notes = "You are texting Chaitu first, on your own. Write ONLY the message itself, 1-2 sentences, no quotes."
+    recent = [m["content"] for m in conversation_history if m["role"] == "assistant"][-4:]
+    if recent:
+        notes += "\nDo NOT repeat or rephrase: " + " | ".join(recent)
+    for attempt in range(2):
+        text, err = await groq_chat(build_system(None, notes), [{"role": "user", "content": prompt}],
+                                    max_tokens=90, temperature=0.9)
+        if err:
+            return None
+        reply = clean_reply(text)
+        if reply and is_usable(reply) and not is_too_similar(reply):
+            return reply
+    return None
 
+# ── Intent detection ──────────────────────────────────────────────────────────
+SEE_ME_KW = [
+    "wanna see you","want to see you","i wanna see you","i want to see you","i wanna see u","i want to see u",
+    "wanna see u","want to see u","let me see you","show me yourself","show yourself","can i see you",
+    "i wanna meet you","i want to meet you","wanna meet you","wish i could see you","wish i could meet you",
+    "send pic","send pics","send photo","send photos","send a pic","send a photo","send me a pic",
+    "send me a photo","send your pic","send your photo","send selfie","send a selfie","your pic","your photo",
+    "your selfie","how do you look","how you look",
+]
+MISS_YOU_KW = ["i miss you","miss you","missing you","i really miss you","i miss u","miss u","missing u"]
+MISS_NEGATIONS = ["don't miss","dont miss","do not miss","not missing","never miss","won't miss","wont miss","don't even miss"]
+GREETING_WORDS = {"yo","hi","hii","hiii","hey","heyy","heyyy","hello","hola","sup","wassup","wasup","whatsup",
+                  "whats up","what's up","hey there","oi","hlo","helo","good morning","gm","morning"}
+GOODBYE_KW = ["goodnight","good night","gn","bye","goodbye","good bye","ttyl","going to sleep","going to bed",
+              "sleeping now","talk later","talk to you later","brb","off to sleep","sleep now"]
+GOOD_NEWS_KW = ["selected","i passed","got placed","got selected","i won","good news","promoted","got the job",
+                "cleared","topped","got an internship","got the offer","got a job"]
+BAD_NEWS_KW = ["i failed","failed","rejected","i lost","got scolded","scolded","didn't get","did not get",
+               "got insulted","embarrassed","bad news","not selected","didn't pass"]
+ANGRY_KW = ["shut up","i'm angry","i am angry","so annoyed","fed up","hate you","leave me alone","irritated","pissed"]
+AFFECTION_KW = ["love you","i love u","luv u","ily","you're cute","you are cute","you look good","so pretty",
+                "my love","you're the best","you are the best","i adore you","love u"]
+QUESTION_STARTS = ("what","why","how","when","where","who","which","do you","did you","are you","were you",
+                   "will you","can you","could you","have you","is it","wyd","hbu","wbu","are u","did u","do u")
 
-def contextual_fallback(text):
-    """Safe fallback when Groq is unavailable; always reacts to the actual message."""
-    t = (text or "").strip().lower()
-    if any(x in t for x in ["still mad", "mad at me", "mad on me", "angry with me", "angry at me"]):
-        return random.choice([
-            "a little maybe 🙄 but i'm not trying to fight with you",
-            "not completely mad anymore, but you still owe me a little apology 😭",
-            "maybe a little 🥺 i was waiting for you to ask me that",
-            "i'm not gonna lie, i was a little mad at you 🙄"
-        ])
-    if any(x in t for x in ["wassup", "what's up", "whats up", "long time", "been long"]):
-        return random.choice([
-            "fr 😭 it's been so long, what have you been up to?",
-            "i knowww, it's been ages 😭 how have you been?",
-            "right? 😭 feels like we haven't properly talked in forever"
-        ])
-    if t in {"yo", "hey", "hi", "hii", "heyy", "hello"}:
-        return random.choice([
-            "heyy chaitu, what's up? 🥺",
-            "yo you finally showed up 😭 what's happening?",
-            "heyy, tell me what you've been doing lately"
-        ])
-    if "how are you" in t or "how r u" in t:
-        return random.choice([
-            "i'm good baby, just taking it easy rn 🥺 how are you?",
-            "i'm okayy, been a little busy lately 😭 what about you?"
-        ])
-    if "what are you doing" in t or "wyd" in t:
-        return random.choice([
-            "just chilling rn, finally getting some quiet time 😌 what about you?",
-            "nothing too exciting rn 😭 i'm just relaxing, what are you doing?"
-        ])
-    if "thank" in t or "thanks" in t:
-        return random.choice([
-            "of course chaitu ❤️ you don't have to thank me",
-            "always, dummy 🥺❤️"
-        ])
-    if t.endswith("?"):
-        return random.choice([
-            "hmm give me a second, i wanna answer that properly 🥺",
-            "wait, i'm actually thinking about that 😭",
-            "okay that's a good question, let me think"
-        ])
-    return random.choice([
-        "hmm tell me more about that, i wanna understand 🥺",
-        "okay wait, i'm actually listening — go on",
-        "i get you, keep talking to me ❤️",
-        "hmm okay, tell me what happened"
-    ])
+def wants_to_see(text):
+    return has_any(text, SEE_ME_KW)
 
+def is_miss_you(text):
+    return has_any(text, MISS_YOU_KW) and not has_any(text, MISS_NEGATIONS)
+
+def detect_intent(text):
+    t = text.strip().lower()
+    if not any(c.isalpha() for c in t):
+        return "UNKNOWN"
+    if wants_to_see(t):                  return "WANT_TO_SEE_YOU"
+    if is_miss_you(t):                   return "MISS_YOU"
+    if has_any(t, GOODBYE_KW):           return "GOODBYE"
+    stripped = re.sub(r"[^a-z' ]", "", t).strip()
+    if stripped in GREETING_WORDS or (len(stripped.split()) <= 3 and stripped.split() and stripped.split()[0] in GREETING_WORDS):
+        return "GREETING"
+    if seems_sad(t):                     return "LOW_MOOD"
+    if mentions_girl(t):                 return "JEALOUSY"
+    if t.endswith("?") or t.startswith(QUESTION_STARTS):
+        return "QUESTION"
+    if has_any(t, GOOD_NEWS_KW):         return "GOOD_NEWS"
+    if has_any(t, BAD_NEWS_KW):          return "BAD_NEWS"
+    if has_any(t, ANGRY_KW):             return "ANGRY"
+    if has_any(t, AFFECTION_KW):         return "AFFECTION"
+    if len(t.split()) <= 2:              return "SHORT_REPLY"
+    return "NORMAL_CONVERSATION"
+
+INTENT_HINTS = {
+    "GREETING":   "He is greeting you or asking what's up. Greet him back naturally; if he asked what's up, tell him what you're doing right now based on the TIME above.",
+    "QUESTION":   "He asked a question. Answer that exact question directly first, in character, then at most a tiny extra touch.",
+    "AFFECTION":  "He is being affectionate. Respond warmly in your own sassy way; don't just parrot 'i love you'.",
+    "GOOD_NEWS":  "He shared good news. React with real excitement about the specific thing he said.",
+    "BAD_NEWS":   "He shared something bad. React with care about the specific thing he said; ask what happened if it's unclear.",
+    "ANGRY":      "He sounds irritated or angry. Don't escalate; respond to what he's actually upset about.",
+    "JEALOUSY":   "He talked about another girl. Show MILD playful jealousy (teasing, sarcastic, a little dramatic) about the specific thing he said. Never controlling or abusive.",
+    "SHORT_REPLY":"His message is short. Look at YOUR last message and treat his reply as the answer/reaction to it; acknowledge it specifically (e.g. if you asked what he's doing and he says 'some work', respond about the work). Never say you didn't understand.",
+    "GOODBYE":    "He is leaving or going to sleep. Say goodnight/bye naturally, matching the time of day.",
+    "NORMAL_CONVERSATION": "Respond naturally to what he said, referring to the specific things in his message.",
+    "UNKNOWN":    "His message may be an emoji, sticker or unclear. React to it naturally; ask a short specific question if you really need to.",
+}
+
+# ── Busy mode ─────────────────────────────────────────────────────────────────
 last_busy_ended = None
 
 def start_busy(mins, reason):
@@ -791,177 +1053,174 @@ def human_reply_delay(text):
         d += random.uniform(300, 900)
     return d
 
+APOLOGETIC = ["sorry","i'm sorry","forgive me","don't be mad","i didn't mean",
+              "please na","baby please","mommy please","won't happen again",
+              "i promise","hear me out","please yaar","jaan please","calm down"]
+
+# ── Core reply logic ──────────────────────────────────────────────────────────
 async def get_reply(user_text):
-    global conversation_history, is_currently_busy, busy_free_at, busy_reason
-    global is_jealous, short_reply_count, care_mode, fight_count, busy_spam_count
-    global angry_mode, angry_stage
+    """
+    Returns (kind, text):
+      ("text", reply)     normal contextual reply
+      ("see_me", reply)   sweet text, then ONE photo
+      ("silent", "")      busy: stay silent
+      ("none", "")        nothing usable could be generated
+    The user message is already in conversation_history when this runs.
+    """
+    global is_jealous, short_reply_count, fight_count, busy_spam_count, angry_mode, angry_stage
 
-    # Explicitly asking to see her -> sweet message + photo.
-    # Missing her alone -> sweet text only, no unsolicited photo.
-    if has_any(user_text, SEE_ME_KW):
-        return "SEE_ME"
+    intent = detect_intent(user_text)
 
-    if has_any(user_text, MISS_HER_KW):
-        return random.choice([
-            "awww chaitu 🥺 i miss you too, come see me soon okay ❤️",
-            "i miss you too baby, wish i could just sit with you rn 🥺❤️",
-            "stop making me miss you more 😭 come see me when you can 🤍",
-            "i knowww 🥺 i miss having you around too, you'll see me soon ❤️",
-            "come here already chaitu 😭 i miss you too much today 🥺"
-        ])
+    # lazy one-word replies (NOT short meaningful answers like "some work")
+    if is_lazy_reply(user_text):
+        short_reply_count += 1
+    else:
+        short_reply_count = 0
 
-    if has_any(user_text, LOOKS_KW):
-        return "SEND_PHOTO"
+    # Explicit intents
+    if intent == "WANT_TO_SEE_YOU":
+        return "see_me", pick_fresh(SEE_ME_TEXTS)
+    if intent == "MISS_YOU":
+        return "text", pick_fresh(MISS_YOU_TEXTS)
 
-    # Common relationship messages should never be left to random reactions.
-    t = user_text.strip().lower()
-    if any(x in t for x in ["still mad", "mad at me", "mad on me", "angry with me", "angry at me"]):
-        return random.choice([
-            "a little maybe 🙄 but i'm not trying to fight with you",
-            "not completely mad anymore, but you still owe me a little apology 😭",
-            "maybe a little 🥺 i was waiting for you to ask me that",
-            "i'm not gonna lie, i was a little mad at you 🙄"
-        ])
-
-    if any(x in t for x in ["wassup", "what's up", "whats up", "long time", "been long"]):
-        return random.choice([
-            "fr 😭 it's been so long, what have you been up to?",
-            "i knowww, it's been ages 😭 how have you been?",
-            "right? 😭 feels like we haven't properly talked in forever"
-        ])
-
+    # Memory / goals / incidents (all feed context, none override the reply)
+    extra_context_hints = []
     fact = should_remember(user_text)
     if fact: add_to_memory(fact)
 
-    # Extract and save incident if relevant
     if is_incident_message(user_text):
         asyncio.create_task(extract_and_save_incident(user_text))
         incident_ctx = await asyncio.to_thread(get_incident_context, user_text)
         if incident_ctx:
-            add_to_memory(f"[incident context] {incident_ctx[:200]}")
+            extra_context_hints.append("Relevant things from the past you may remember: " + incident_ctx[:250])
 
     goal = detect_goal(user_text)
     if goal:
         add_goal(goal)
-        if random.random() < 0.80:
-            return random.choice(FLIRTY_MOT_MSGS if random.random() < 0.40 else MOTIVATION_MSGS)
+        extra_context_hints.append("He mentioned something he's working on / a goal. Encourage him about that specific thing in your own words (a little teasing/motivating, not generic).")
 
-    if seems_bored(user_text) and random.random() < 0.85:
-        return random.choice(BORED_RESPONSES)
-
-    if has_any(user_text, APOLOGETIC):
-        if angry_mode:
-            if angry_stage == 0:
-                angry_stage = 1
-                return random.choice([
-                    "chaitu sorry isn't enough right now 🙂",
-                    "i don't want to hear sorry chaitu, i want you to understand 😤",
-                    "saying sorry doesn't fix how i felt 🙄",
-                    "chaitu it's not that simple 😤",
-                ])
-            elif angry_stage == 1:
-                angry_stage = 2
-                return random.choice(EMOTIONAL_BREAKDOWN)
-            elif angry_stage == 2:
-                angry_stage = 3
-                return random.choice([
-                    "chaitu i just... don't do this to me again okay 😭",
-                    "you have no idea how much it hurt 😭 just please be more careful",
-                    "chaitu promise me 😭 just promise me you won't disappear like that",
-                    "i need you to actually mean it chaitu 😭",
-                ])
-            else:
-                angry_stage = 0
-                angry_mode = False
-                return random.choice(COMEBACK_LOVE)
-        else:
-            if random.random() < 0.80:
-                return random.choice(MELT_MSGS)
-
-    if is_jealous:
-        asking_why = ["what did i do","why are you mad","what happened","what's wrong","whats wrong","are you okay","why are you angry","tell me","why"]
-        if has_any(user_text, asking_why):
-            return random.choice(["you know exactly what you did chaitu 🙄","took you that long to reply and now you're asking 🙄","you were ignoring me that's what 😤","chaitu you literally seen zoned me 🙄"])
-
-    if has_any(user_text, ["mommy"]):
-        short_reply_count = 0
-        return random.choice(["yes my baby 🥺❤️ come here","yes baby 🤭 what do you want","aww my baby 🥺 i'm all yours","yes my baby 😏 what is it","baby 🤭 stop it you know what that does to me","does my baby need mommy's milk? 🍼🤭😏","aww is my baby hungry? 🍼😏🤭","aao na baby 🥺❤️","chaitu jaan 🥺 mommy is here","suno mera babu 🥺❤️"])
-
-    if has_any(user_text, ["daddy"]):
-        short_reply_count = 0
-        return random.choice(["stop it 😭 don't call me that","chaitu omg 😭🤭","excuse me 😭 what did you just say","okay i did not expect that 😭"])
-
-    if seems_sad(user_text) and random.random() < 0.75:
-        if random.random() < 0.65:
-            return random.choice(LOW_POETRY)
-        return random.choice(SAD_RESPONSES)
-
-    if seems_stressed(user_text) and random.random() < 0.80:
-        return random.choice(CHEER_UP_MSGS)
-
-    if mentions_girl(user_text):
-        girl_name = extract_girl_name(user_text)
-        if girl_name: remember_girl_name(girl_name)
-        r = random.random()
-        if r < 0.55:   return random.choice(JEALOUS_RESPONSES)
-        else:          return random.choice(POSSESSIVE_MSGS)
-
-    if _remembered_girl_names:
-        for name in _remembered_girl_names:
-            if has_any(user_text, [name.lower()]) and random.random() < 0.60:
-                return f"chaitu why are you bringing up {name} again 🙂"
-
-    # If Chaitu asks her to talk, she breaks out of busy
-    if is_currently_busy and has_any(user_text, URGENT_KW):
-        end_busy()
-        return random.choice(BREAK_BUSY_MSGS)
-
+    # Busy mode
     if is_currently_busy:
+        if has_any(user_text, URGENT_KW):
+            end_busy()
+            return "text", random.choice(BREAK_BUSY_MSGS)
         if busy_free_at and datetime.now(IST) < busy_free_at:
             busy_spam_count += 1
             if busy_spam_count < 3:
-                return "BUSY_SILENT"
+                return "silent", ""
             busy_spam_count = 0
-            return random.choice(["chaitu i said i'm busy 😭 but okay i miss you too 🥺",
-                                  "omg chaitu stop 😤 you're so needy and i love it 😘",
-                                  "okay okay i see you 🙄 i'll be back soon i promise 💕"])
+            return "text", pick_fresh(["chaitu i said i'm busy 😭 but okay i miss you too 🥺",
+                                       "omg chaitu stop 😤 you're so needy and i love it 😘",
+                                       "okay okay i see you 🙄 i'll be back soon i promise 💕"])
         end_busy()
 
-    if can_go_busy():
+    # Going busy: never in the middle of him answering her question, or during emotional/question messages
+    if (can_go_busy() and intent in ("NORMAL_CONVERSATION", "SHORT_REPLY")
+            and not last_assistant_asked_question() and len(conversation_history) > 4):
         h = datetime.now(IST).hour
-        chance = 0.15 if is_busy_hours() else (0.08 if h >= 20 else 0.03)
+        chance = 0.06 if is_busy_hours() else (0.03 if h >= 20 else 0.01)
         if random.random() < chance:
             scenario, mins, reason = random.choice(BUSY_DAY if is_busy_hours() else BUSY_ANY)
             start_busy(mins, reason)
-            return scenario
+            return "text", scenario
 
-    if is_short_reply(user_text): short_reply_count += 1
-    else: short_reply_count = 0
+    hints = []
+    max_tokens = 120
 
-    if is_late_reply() and not is_jealous:
-        is_jealous = True
-        return random.choice(JEALOUS_OPENERS)
+    # Base hint from intent
+    if intent == "LOW_MOOD":
+        if seems_serious_distress(user_text):
+            hints.append("He may be in real distress. Drop the teasing. Be warm and serious, tell him you're here, and gently urge him to talk to someone he trusts (family, a close friend, or a helpline) right now.")
+        elif random.random() < 0.35:
+            hints.append("He's feeling low. Comfort him warmly with a short ORIGINAL 3-4 line English poem (not a famous poem or lyrics), casual tone, ending with one heart emoji. Only the poem, nothing else.")
+            max_tokens = 170
+        else:
+            hints.append("He's feeling low. Be warm and supportive in 1-2 sentences, ask gently what happened, no poem this time.")
+    else:
+        hints.append(INTENT_HINTS.get(intent, INTENT_HINTS["NORMAL_CONVERSATION"]))
 
-    if is_jealous and random.random() < 0.6:
-        is_jealous = False
+    # Topic-specific guidance (all go to Groq, never a canned reply)
+    t = user_text.lower()
+    if has_any(t, ["still mad","mad at me","mad on me","angry with me","angry at me","still angry","still upset"]):
+        hints.append("He is asking whether you're still mad at him. Answer THAT directly in character (e.g. a little but softening, or not anymore).")
+    if has_any(t, ["what are you doing","what r u doing","wyd","what are u doing"]):
+        hints.append("Tell him what you're doing right now based on the TIME above.")
+    if has_any(t, ["what did you do today","what did u do today","how was your day","how was ur day"]):
+        hints.append("Tell him about your day naturally based on the TIME above (college/dance/studies/family), with one specific detail.")
+
+    if intent == "JEALOUSY":
+        girl_name = extract_girl_name(user_text)
+        if girl_name: remember_girl_name(girl_name)
+        if r_chance(0.35):
+            hints.append("A line like 'you're mine, don't forget it' is fine, but keep it playful.")
+    if _remembered_girl_names and any(has_any(user_text, [n.lower()]) for n in _remembered_girl_names):
+        hints.append("He is talking about a girl he mentioned earlier; you can tease him about bringing her up again.")
+
+    if seems_bored(user_text):
+        hints.append("He's bored. Tease him playfully (flirty, planning a meetup, or telling him to work on his cybersecurity course).")
+    if seems_stressed(user_text):
+        hints.append("He's stressed. Be warm, ask what's going on and reassure him.")
+
+    if has_any(user_text, ["mommy"]):
+        hints.append("He called you mommy. Reply sweet and slightly naughty, tasteful and short.")
+    if has_any(user_text, ["daddy"]):
+        hints.append("He called you daddy. Act flustered and playful ('stop it'), tasteful, short.")
+
+    # Angry mode (manual /angry) keeps its stages but stays contextual
+    apologizing = has_any(user_text, APOLOGETIC)
+    if angry_mode:
+        if apologizing:
+            if angry_stage == 0:
+                angry_stage = 1
+                hints.append("He's saying sorry but you're still hurt. Say 'sorry isn't enough right now', cold but not cruel, referencing what he said.")
+            elif angry_stage == 1:
+                angry_stage = 2
+                hints.append("You're not angry anymore, you're hurt: you were scared and worried when he disappeared. Say that honestly.")
+            elif angry_stage == 2:
+                angry_stage = 3
+                hints.append("You're softening. Ask him to promise he won't disappear like that again.")
+            else:
+                angry_stage = 0
+                angry_mode = False
+                hints.append("Forgive him lovingly (you can't stay mad), but tell him not to disappear again.")
+        elif angry_stage == 0:
+            hints.append("You're angry that he deleted Telegram / disappeared without telling you. Be sarcastic and cold, but still answer what he actually said.")
+    elif apologizing:
+        hints.append("He's apologizing. Respond to the apology genuinely; you can soften or tease, depending on the conversation.")
+
+    # Late reply -> mild coldness folded INTO the reply (never replaces it)
+    late = is_late_reply() and random.random() < 0.6
+    is_jealous = late
+    if late:
         fight_count += 1
-        return random.choice(MAKE_UP_MSGS if random.random() < 0.40 else JEALOUS_RETURN)
+        hints.append("He took very long to reply to your last message. Open with a short sarcastic/cold line about that, then still answer what he said properly.")
 
+    # Lazy replies in a row -> mild annoyance folded into the reply
     if short_reply_count >= 2 and random.random() < 0.6:
         short_reply_count = 0
-        return random.choice(SHORT_REACTIONS)
+        hints.append("He keeps sending lazy one-word replies. Be a little annoyed (you can call him CHAITANYA KUMAR) but still react to what he said.")
 
-    # Keep the actual conversation context available to Groq.
-    # Deterministic replies are also recorded so the next message has continuity.
-    if len(conversation_history) > 18:
-        conversation_history = conversation_history[-18:]
-    conversation_history.append({"role": "user", "content": user_text})
+    hints.extend(extra_context_hints)
 
-    reply = await call_groq(conversation_history, jealous=is_jealous, short_reply=(short_reply_count >= 2))
-    if not reply:
-        conversation_history.pop()
-        return None
-    return reply
+    reply, api_failed = await generate_reply(user_text, hints, max_tokens=max_tokens)
+    if reply:
+        return "text", reply
+    if api_failed:
+        return "text", emergency_fallback(intent)
+    logger.error("No usable reply generated (not an API failure) — staying silent rather than sending filler")
+    return "none", ""
+
+def r_chance(p):
+    return random.random() < p
+
+# ── Scheduled (standalone) messages ───────────────────────────────────────────
+def conversation_active():
+    """True if Chaitu is mid-conversation; scheduled messages must never interfere."""
+    if pending_replies > 0:
+        return True
+    if last_reply_time is not None and (datetime.now(IST) - last_reply_time).total_seconds() < 300:
+        return True
+    return False
 
 def get_random_prompts():
     if care_mode:  return CARE_CHECKUP_MSGS
@@ -994,6 +1253,11 @@ def get_random_prompts():
     elif 16 <= h < 20: return EVENING_PROMPTS
     else:              return NIGHT_PROMPTS
 
+FINISHED_MESSAGE_LISTS = (OVERLOADED_LOVE_MSGS + HOLIDAY_MEMORY_MSGS + FIGHT_STARTERS + PETTY_MSGS + DELETED_TEASE_MSGS
+                          + SONGS_REELS + BRAG_ABOUT_YOU + PROUD_MSGS + ROAST_MSGS + TEASE_BIT_MSGS + PERSONAL_GOALS
+                          + STUDIOUS_MSGS + HUNGER_MSGS + BRAG_MSGS + WOULD_YOU_RATHER + MEETUP_PLANNING + DEEP_Q_MSGS
+                          + FUTURE_DATE_MSGS + CARE_CHECKUP_MSGS)
+
 async def get_random_message(nudge=False, meal=None):
     global _used_prompts
     if meal and meal in MEAL_PROMPTS:
@@ -1017,13 +1281,9 @@ async def get_random_message(nudge=False, meal=None):
         if len(_used_prompts) > 10:
             _used_prompts.pop(0)
     # Prompts that are already finished messages (not instructions) get sent as-is
-    if prompt in (OVERLOADED_LOVE_MSGS + HOLIDAY_MEMORY_MSGS + FIGHT_STARTERS + PETTY_MSGS + DELETED_TEASE_MSGS
-                  + SONGS_REELS + BRAG_ABOUT_YOU + PROUD_MSGS + ROAST_MSGS + TEASE_BIT_MSGS + PERSONAL_GOALS + STUDIOUS_MSGS
-                  + HUNGER_MSGS + BRAG_MSGS + WOULD_YOU_RATHER + MEETUP_PLANNING + DEEP_Q_MSGS
-                  + FUTURE_DATE_MSGS + CARE_CHECKUP_MSGS):
+    if prompt in FINISHED_MESSAGE_LISTS:
         return prompt
-    prompt += " Write ONLY the message with emojis. Max 1-2 sentences."
-    return await call_groq([{"role": "user", "content": prompt}])
+    return await generate_scheduled(prompt + " Write ONLY the message with emojis. Max 1-2 sentences.")
 
 async def send_photo(client, username, naughty=False):
     try:
@@ -1043,6 +1303,88 @@ async def send_reaction(client, event):
     except Exception as e:
         logger.error(f"Reaction error: {e}")
 
+# ── Incoming message pipeline ─────────────────────────────────────────────────
+async def process_message(client, event, user_text):
+    """
+    FLOW: (message already stored in history) -> song check -> intent + contextual reply
+          -> human-like wait -> typing -> send -> store reply in history.
+    """
+    global last_shreya_msg_time
+    started = time.time()
+    my_id = event.id
+
+    # Song request — before everything else
+    song_key = detect_song_request(user_text)
+    if song_key:
+        logger.info(f"Song: {song_key}")
+        song_url = SONG_LIBRARY.get(song_key)
+        if song_url:
+            try:
+                await client.send_file(YOUR_USERNAME, song_url, caption=random.choice(SONG_CAPTIONS))
+                record_assistant(f"[sent you the song '{song_key}']")
+                last_shreya_msg_time = datetime.now(IST)
+                logger.info(f"Song sent: {song_key}")
+            except Exception as e:
+                logger.error(f"Song error: {e}")
+                await event.reply("chaitu it's not loading 😭 try again")
+        return
+
+    # Short pause so a quick burst of messages is answered ONCE with full context
+    await asyncio.sleep(random.uniform(2, 4))
+    if latest_event_id != my_id:
+        return
+
+    # Detect intent + generate the contextual reply BEFORE the long human delay
+    kind, reply = await get_reply(user_text)
+
+    if kind == "silent":
+        logger.info("Busy - staying silent")
+        return
+    if kind == "none" or not reply:
+        return
+
+    # Quick reply if she's announcing busy, or he asked her to talk
+    quick = is_currently_busy or reply in BREAK_BUSY_MSGS or has_any(user_text, URGENT_KW)
+    delay = random.uniform(5, 20) if quick else human_reply_delay(user_text)
+    delay = max(2.0, delay - (time.time() - started))
+
+    if not quick and random.random() < 0.20:
+        await asyncio.sleep(random.uniform(10, 30))
+        await send_reaction(client, event)
+        delay = max(2.0, delay - 20)
+
+    logger.info(f"Waiting {delay:.0f}s before replying")
+    await asyncio.sleep(delay)
+
+    # A newer message arrived while waiting: that handler answers with the full history
+    if latest_event_id != my_id:
+        logger.info("Newer message arrived — dropping this reply")
+        return
+
+    typing_delay = min(10, max(2, len(reply) * 0.1)) * random.uniform(0.8, 1.3)
+    async with client.action(YOUR_USERNAME, "typing"):
+        await asyncio.sleep(typing_delay)
+
+    if latest_event_id != my_id:
+        logger.info("Newer message arrived during typing — dropping this reply")
+        return
+
+    logger.info(f"Sending reply ({kind}): {reply}")
+    await event.reply(reply)
+    record_assistant(reply)
+    last_shreya_msg_time = datetime.now(IST)
+
+    if kind == "see_me":
+        await asyncio.sleep(random.uniform(1, 3))
+        sent = await send_photo(client, YOUR_USERNAME, naughty=False)
+        if sent:
+            add_history("assistant", "[sent a photo of yourself]")
+        else:
+            logger.error("SEE_ME photo failed")
+        last_shreya_msg_time = datetime.now(IST)
+
+    logger.info(f"Replied: {reply[:80]}")
+
 async def run_bot():
     while True:
         client    = None
@@ -1054,8 +1396,9 @@ async def run_bot():
 
             @client.on(events.NewMessage(incoming=True))
             async def handle(event):
-                global last_reply_time, prev_reply_time, last_shreya_msg_time
+                global last_reply_time, prev_reply_time, latest_event_id, pending_replies
                 global seen_zone_reacted, no_reply_reacted, angry_mode, angry_stage
+                counted = False
                 try:
                     sender = await event.get_sender()
                     if not sender or sender.username != YOUR_USERNAME: return
@@ -1080,102 +1423,22 @@ async def run_bot():
                         logger.info("Angry mode OFF")
                         return
 
-                    # If angry mode — hit him with a sharp opening line first
-                    if angry_mode and angry_stage == 0 and random.random() < 0.80:
-                        msg = random.choice(ANGRY_FIRST_REPLY)
-                        async with client.action(YOUR_USERNAME, "typing"):
-                            await asyncio.sleep(random.uniform(3, 8))
-                        await client.send_message(YOUR_USERNAME, msg)
-                        await asyncio.sleep(random.uniform(2, 4))
+                    # STORE MESSAGE IN HISTORY first, so every later step sees it
+                    add_history("user", user_text)
+                    latest_event_id = event.id
+                    pending_replies += 1
+                    counted = True
 
-                    # Song request — before everything else
-                    song_key = detect_song_request(user_text)
-                    if song_key:
-                        logger.info(f"Song: {song_key}")
-                        song_url = SONG_LIBRARY.get(song_key)
-                        if song_url:
-                            try:
-                                await client.send_file(YOUR_USERNAME, song_url, caption=random.choice(SONG_CAPTIONS))
-                                logger.info(f"Song sent: {song_key}")
-                            except Exception as e:
-                                logger.error(f"Song error: {e}")
-                                await event.reply("chaitu it's not loading 😭 try again")
-                        return
-
-                    # Human-like response timing. No hard offline hours.
-                    reply = await get_reply(user_text)
-
-                    # Busy: she read it but stays silent until she's free
-                    if reply == "BUSY_SILENT":
-                        logger.info("Busy - staying silent")
-                        return
-
-                    if not reply:
-                        logger.error("get_reply() returned None - sending fallback")
-                        reply = random.choice([
-                            "wait 😭 my brain just stopped working",
-                            "chaitu 😭 say that again",
-                            "wait i'm listening 🥺",
-                            "sorry 😭 i glitched for a sec"
-                        ])
-
-                    # Quick reply if she's announcing busy, or he asked her to talk
-                    quick = is_currently_busy or reply in BREAK_BUSY_MSGS or has_any(user_text, URGENT_KW)
-                    delay = random.uniform(5, 20) if quick else human_reply_delay(user_text)
-
-                    if not quick and random.random() < 0.20:
-                        await asyncio.sleep(random.uniform(10, 30))
-                        await send_reaction(client, event)
-                        delay = max(0, delay - 20)
-
-                    logger.info(f"Waiting {delay:.0f}s before replying")
-                    await asyncio.sleep(delay)
-
-                    typing_delay = min(10, max(2, len(reply) * 0.1))
-                    async with client.action(YOUR_USERNAME, "typing"):
-                        await asyncio.sleep(typing_delay)
-
-                    logger.info(f"Sending reply: {reply}")
-
-                    if reply == "SEE_ME":
-                        sweet_see = random.choice([
-                            "of course you wanna see me 😭❤️ wait, sending you one",
-                            "aww you wanna see me? 🥺 okay baby, just for you ❤️",
-                            "fineee chaitu 🤭 since you asked so sweetly, here you go ❤️",
-                            "you miss seeing me that much huh 🥺 okay, look at your girl ❤️",
-                            "come on then 😭❤️ here's a little me for you"
-                        ])
-                        await event.reply(sweet_see)
-                        await asyncio.sleep(random.uniform(1, 3))
-                        sent = await send_photo(client, YOUR_USERNAME, naughty=False)
-                        if not sent:
-                            logger.error("SEE_ME photo failed")
-                    elif reply == "SEND_PHOTO":
-                        sent = await send_photo(client, YOUR_USERNAME, naughty=True)
-                        if not sent:
-                            await event.reply(random.choice(["camera shy 😭","give me a sec 🤭"]))
-                    elif reply == "JEALOUS_PHOTO":
-                        try:
-                            await client.send_file(YOUR_USERNAME, random.choice(SHREYA_PHOTOS), caption=random.choice(JEALOUS_PHOTO_CAPS))
-                        except Exception as e:
-                            logger.error(f"Jealous photo error: {e}")
-                            await event.reply(random.choice(JEALOUS_RESPONSES))
-                    else:
-                        await event.reply(reply)
-
-                    # Record the reply so the next message has real conversational context.
-                    if reply not in ("SEE_ME", "SEND_PHOTO", "JEALOUS_PHOTO", "BUSY_SILENT"):
-                        conversation_history.append({"role": "assistant", "content": reply})
-                        if len(conversation_history) > 20:
-                            conversation_history = conversation_history[-20:]
-
-                    last_shreya_msg_time = datetime.now(IST)
-                    logger.info(f"Replied: {reply[:80]}")
+                    await process_message(client, event, user_text)
 
                 except Exception as e:
-                    logger.error(f"Handle error: {e}")
+                    logger.error(f"Handle error: {e!r}")
+                finally:
+                    if counted:
+                        pending_replies = max(0, pending_replies - 1)
 
             async def check_busy_followup():
+                global last_shreya_msg_time
                 try:
                     if not is_currently_busy: return
                     if busy_free_at and datetime.now(IST) >= busy_free_at:
@@ -1186,22 +1449,28 @@ async def run_bot():
                             await asyncio.sleep(random.uniform(2, 5))
                             async with client.action(YOUR_USERNAME, "typing"):
                                 await asyncio.sleep(random.uniform(1, 3))
-                            await client.send_message(YOUR_USERNAME, random.choice(msgs))
+                            msg = pick_fresh(msgs)
+                            await client.send_message(YOUR_USERNAME, msg)
+                            record_assistant(msg)
+                            last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Busy followup error: {e}")
 
             async def check_seen_zone():
                 global seen_zone_reacted, last_shreya_msg_time
                 try:
-                    if seen_zone_reacted or last_shreya_msg_time is None: return
                     now = datetime.now(IST)
+                    if not (8 <= now.hour < 23): return
+                    if conversation_active(): return
+                    if seen_zone_reacted or last_shreya_msg_time is None: return
                     if last_reply_time and last_reply_time > last_shreya_msg_time: return
                     if (now - last_shreya_msg_time).total_seconds() > 3600:
                         seen_zone_reacted = True
-                        msg = random.choice(SEEN_ZONE_MSGS)
+                        msg = pick_fresh(SEEN_ZONE_MSGS)
                         async with client.action(YOUR_USERNAME, "typing"):
                             await asyncio.sleep(random.uniform(2, 5))
                         await client.send_message(YOUR_USERNAME, msg)
+                        record_assistant(msg)
                         last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Seen zone error: {e}")
@@ -1210,15 +1479,17 @@ async def run_bot():
                 global no_reply_reacted, last_shreya_msg_time
                 try:
                     if no_reply_reacted: return
+                    if conversation_active(): return
                     now = datetime.now(IST)
                     if not (9 <= now.hour <= 19): return
                     elapsed = float('inf') if last_reply_time is None else (now - last_reply_time).total_seconds()
                     if elapsed > 10800:
                         no_reply_reacted = True
-                        msg = random.choice(NO_REPLY_MSGS)
+                        msg = pick_fresh(NO_REPLY_MSGS)
                         async with client.action(YOUR_USERNAME, "typing"):
                             await asyncio.sleep(random.uniform(3, 7))
                         await client.send_message(YOUR_USERNAME, msg)
+                        record_assistant(msg)
                         last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"No reply error: {e}")
@@ -1228,16 +1499,21 @@ async def run_bot():
                 try:
                     now_hour = datetime.now(IST).hour
                     if now_hour >= 20 or now_hour < 8: return
+                    if conversation_active(): return
                     reply = await get_random_message()
+                    if conversation_active(): return
                     if reply == "MISSING_PHOTO":
                         missing_caps = ["missing you 🥺","thinking of you","chaitu 🥺","just because 🥺❤️"]
-                        await client.send_file(YOUR_USERNAME, random.choice(SHREYA_PHOTOS), caption=random.choice(missing_caps))
+                        cap = random.choice(missing_caps)
+                        await client.send_file(YOUR_USERNAME, random.choice(SHREYA_PHOTOS), caption=cap)
+                        record_assistant(f"[sent a photo of yourself with caption: {cap}]")
                         last_shreya_msg_time = datetime.now(IST)
                         return
                     if not reply: return
                     async with client.action(YOUR_USERNAME, "typing"):
                         await asyncio.sleep(random.uniform(2, 5))
                     await client.send_message(YOUR_USERNAME, reply)
+                    record_assistant(reply)
                     logger.info(f"Random: {reply[:80]}")
                     last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
@@ -1248,11 +1524,13 @@ async def run_bot():
                 try:
                     meal = get_meal_context()
                     if not meal or random.random() > 0.40: return
+                    if conversation_active(): return
                     reply = await get_random_message(meal=meal)
-                    if not reply: return
+                    if not reply or reply == "MISSING_PHOTO": return
                     async with client.action(YOUR_USERNAME, "typing"):
                         await asyncio.sleep(random.uniform(2, 4))
                     await client.send_message(YOUR_USERNAME, reply)
+                    record_assistant(reply)
                     last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Meal error: {e}")
@@ -1262,12 +1540,14 @@ async def run_bot():
                 try:
                     now = datetime.now(IST)
                     if not (9 <= now.hour <= 19): return
+                    if conversation_active(): return
                     if last_reply_time is None or (now - last_reply_time).total_seconds() > 7200:
                         reply = await get_random_message(nudge=True)
-                        if not reply: return
+                        if not reply or reply == "MISSING_PHOTO": return
                         async with client.action(YOUR_USERNAME, "typing"):
                             await asyncio.sleep(random.uniform(2, 4))
                         await client.send_message(YOUR_USERNAME, reply)
+                        record_assistant(reply)
                         last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Nudge error: {e}")
@@ -1275,66 +1555,90 @@ async def run_bot():
             async def send_good_morning():
                 global last_shreya_msg_time
                 try:
+                    # Exactly once per IST day, even across restarts/reconnects
+                    if not once_per_day("good_morning"):
+                        logger.info("Good morning already sent today — skipping")
+                        return
                     morning_messages = [
-                        "good morning chaitu ❤️ wake up, you've got this today. go make yourself proud 🥺",
+                        "good morning chaitu ❤️ go make today yours. you've got this, now get up 😤",
                         "good morning baby ☀️ new day, new chance to get closer to everything you're working for. i'm rooting for you ❤️",
                         "good morning chaitu 🥺 don't doubt yourself today, you're capable of way more than you think ❤️",
                         "morninggg ❤️ get up and go chase your goals today, i'll be cheering for you from here 🤭",
                         "good morning baby ☀️ one step at a time today, okay? you've got this and i'm proud of you ❤️",
                         "good morning chaitu 🥺 now go have a productive day and make that future version of you proud ❤️"
                     ]
-                    reply = random.choice(morning_messages)
+                    reply = pick_fresh(morning_messages)
                     async with client.action(YOUR_USERNAME, "typing"):
                         await asyncio.sleep(random.uniform(2, 4))
                     await client.send_message(YOUR_USERNAME, reply)
+                    record_assistant(reply)
                     await asyncio.sleep(random.uniform(1, 3))
                     # Every 8 AM good-morning message includes a photo.
-                    await send_photo(client, YOUR_USERNAME, naughty=False)
+                    if await send_photo(client, YOUR_USERNAME, naughty=False):
+                        add_history("assistant", "[sent a photo of yourself]")
                     last_shreya_msg_time = datetime.now(IST)
                     logger.info("Daily 8 AM good-morning message + photo sent")
                 except Exception as e:
                     logger.error(f"Morning error: {e}")
 
             async def check_special_day():
+                global last_shreya_msg_time
                 try:
                     special = get_special_day()
                     if not special: return
+                    if not once_per_day("special_day"): return
                     if special == "chaitu_birthday": prompt = "Today is Chaitu's birthday! Send him the most heartfelt birthday wish. Short and loving."
                     elif special == "your_birthday": prompt = "Today is your birthday 15th August! Text Chaitu excitedly."
                     elif special == "anniversary":   prompt = "Today is your anniversary! Send Chaitu a loving message."
                     else: return
-                    reply = await call_groq([{"role": "user", "content": prompt}])
-                    if reply: await client.send_message(YOUR_USERNAME, reply)
+                    reply = await generate_scheduled(prompt)
+                    if reply:
+                        await client.send_message(YOUR_USERNAME, reply)
+                        record_assistant(reply)
+                        last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Special day error: {e}")
 
             async def check_festival():
+                global last_shreya_msg_time
                 try:
                     now = datetime.now(IST)
                     key = (now.month, now.day)
                     msgs = FESTIVALS.get(key) or MOVING_FESTIVALS.get(now.year, {}).get(key)
-                    if msgs:
-                        await client.send_message(YOUR_USERNAME, random.choice(msgs))
+                    if msgs and once_per_day("festival"):
+                        msg = random.choice(msgs)
+                        await client.send_message(YOUR_USERNAME, msg)
+                        record_assistant(msg)
+                        last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Festival error: {e}")
 
             async def check_monthly_anniversary():
+                global last_shreya_msg_time
                 try:
                     now = datetime.now(IST)
                     if now.day != ANNIVERSARY[1]: return
                     # On the actual yearly anniversary, check_special_day already sends a message
                     if (now.month, now.day) == ANNIVERSARY: return
-                    await client.send_message(YOUR_USERNAME, random.choice(MONTHLY_ANN_MSGS))
+                    if not once_per_day("monthly_ann"): return
+                    msg = random.choice(MONTHLY_ANN_MSGS)
+                    await client.send_message(YOUR_USERNAME, msg)
+                    record_assistant(msg)
+                    last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Anniversary error: {e}")
 
             async def send_exam_goodluck():
+                global last_shreya_msg_time
                 try:
                     memory = load_memory()
                     today = datetime.now(IST).strftime("%d %b")
                     has_exam = any(("exam" in f.lower() or "test" in f.lower()) and today in f for f in memory.get("facts", []))
-                    if has_exam:
-                        await client.send_message(YOUR_USERNAME, random.choice(GOODLUCK_MSGS))
+                    if has_exam and once_per_day("goodluck"):
+                        msg = random.choice(GOODLUCK_MSGS)
+                        await client.send_message(YOUR_USERNAME, msg)
+                        record_assistant(msg)
+                        last_shreya_msg_time = datetime.now(IST)
                 except Exception as e:
                     logger.error(f"Good luck error: {e}")
 
