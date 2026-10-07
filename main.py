@@ -688,11 +688,12 @@ async def call_groq(messages, jealous=False, short_reply=False):
                 data = await resp.json()
                 logger.info(f"Groq raw response: {str(data)[:200]}")
                 reply = data["choices"][0]["message"]["content"].strip()
-        # Emoji-only prevention
+        # Never let an emoji-only / useless Groq answer become the reply.
+        # Use a fallback that actually matches what Chaitu said.
         clean = ''.join(c for c in reply if c.isalpha() or c.isdigit())
         if len(clean) < 4:
-            logger.info("Emoji-only detected — using fallback")
-            reply = random.choice(["omg tell me more 🥺", "chaitu 😭 what happened", "wait what 😭", "okay i'm listening 🥺", "chaitu 🥺 go on"])
+            logger.info("Groq returned an unusable reply — using contextual fallback")
+            reply = contextual_fallback(last_user_msg)
         return reply
     except Exception as e:
         logger.error(f"Groq error: {e}")
@@ -707,6 +708,57 @@ LOOKS_KW = ["send pic","send pics","send photo","photo","pic","pics","picture","
 
 SEE_ME_KW = ["wanna see you","want to see you","i wanna see you","i want to see you","i want to see her","i wanna see her","wanna see her","let me see you","let me see her","show me yourself","show yourself","can i see you","can i see her"]
 MISS_HER_KW = ["i miss you","miss you","i miss her","miss her","missing you","missing her","i really miss you","i really miss her","i miss u","miss u"]
+
+
+def contextual_fallback(text):
+    """Safe fallback when Groq is unavailable; always reacts to the actual message."""
+    t = (text or "").strip().lower()
+    if any(x in t for x in ["still mad", "mad at me", "mad on me", "angry with me", "angry at me"]):
+        return random.choice([
+            "a little maybe 🙄 but i'm not trying to fight with you",
+            "not completely mad anymore, but you still owe me a little apology 😭",
+            "maybe a little 🥺 i was waiting for you to ask me that",
+            "i'm not gonna lie, i was a little mad at you 🙄"
+        ])
+    if any(x in t for x in ["wassup", "what's up", "whats up", "long time", "been long"]):
+        return random.choice([
+            "fr 😭 it's been so long, what have you been up to?",
+            "i knowww, it's been ages 😭 how have you been?",
+            "right? 😭 feels like we haven't properly talked in forever"
+        ])
+    if t in {"yo", "hey", "hi", "hii", "heyy", "hello"}:
+        return random.choice([
+            "heyy chaitu, what's up? 🥺",
+            "yo you finally showed up 😭 what's happening?",
+            "heyy, tell me what you've been doing lately"
+        ])
+    if "how are you" in t or "how r u" in t:
+        return random.choice([
+            "i'm good baby, just taking it easy rn 🥺 how are you?",
+            "i'm okayy, been a little busy lately 😭 what about you?"
+        ])
+    if "what are you doing" in t or "wyd" in t:
+        return random.choice([
+            "just chilling rn, finally getting some quiet time 😌 what about you?",
+            "nothing too exciting rn 😭 i'm just relaxing, what are you doing?"
+        ])
+    if "thank" in t or "thanks" in t:
+        return random.choice([
+            "of course chaitu ❤️ you don't have to thank me",
+            "always, dummy 🥺❤️"
+        ])
+    if t.endswith("?"):
+        return random.choice([
+            "hmm give me a second, i wanna answer that properly 🥺",
+            "wait, i'm actually thinking about that 😭",
+            "okay that's a good question, let me think"
+        ])
+    return random.choice([
+        "hmm tell me more about that, i wanna understand 🥺",
+        "okay wait, i'm actually listening — go on",
+        "i get you, keep talking to me ❤️",
+        "hmm okay, tell me what happened"
+    ])
 
 last_busy_ended = None
 
@@ -760,6 +812,23 @@ async def get_reply(user_text):
 
     if has_any(user_text, LOOKS_KW):
         return "SEND_PHOTO"
+
+    # Common relationship messages should never be left to random reactions.
+    t = user_text.strip().lower()
+    if any(x in t for x in ["still mad", "mad at me", "mad on me", "angry with me", "angry at me"]):
+        return random.choice([
+            "a little maybe 🙄 but i'm not trying to fight with you",
+            "not completely mad anymore, but you still owe me a little apology 😭",
+            "maybe a little 🥺 i was waiting for you to ask me that",
+            "i'm not gonna lie, i was a little mad at you 🙄"
+        ])
+
+    if any(x in t for x in ["wassup", "what's up", "whats up", "long time", "been long"]):
+        return random.choice([
+            "fr 😭 it's been so long, what have you been up to?",
+            "i knowww, it's been ages 😭 how have you been?",
+            "right? 😭 feels like we haven't properly talked in forever"
+        ])
 
     fact = should_remember(user_text)
     if fact: add_to_memory(fact)
@@ -882,18 +951,16 @@ async def get_reply(user_text):
         short_reply_count = 0
         return random.choice(SHORT_REACTIONS)
 
-    if random.random() < 0.08 and not wants_to_talk(user_text):
-        return random.choice(["🥺","❤️","😭","💀","✨","😍","🫶","💕","😤","😂"])
-
-    if len(conversation_history) > 20:
-        conversation_history = conversation_history[-20:]
-
+    # Keep the actual conversation context available to Groq.
+    # Deterministic replies are also recorded so the next message has continuity.
+    if len(conversation_history) > 18:
+        conversation_history = conversation_history[-18:]
     conversation_history.append({"role": "user", "content": user_text})
+
     reply = await call_groq(conversation_history, jealous=is_jealous, short_reply=(short_reply_count >= 2))
     if not reply:
-        conversation_history.pop()  # don't leave an unanswered user turn in history
+        conversation_history.pop()
         return None
-    conversation_history.append({"role": "assistant", "content": reply})
     return reply
 
 def get_random_prompts():
@@ -1096,14 +1163,14 @@ async def run_bot():
                     else:
                         await event.reply(reply)
 
+                    # Record the reply so the next message has real conversational context.
+                    if reply not in ("SEE_ME", "SEND_PHOTO", "JEALOUS_PHOTO", "BUSY_SILENT"):
+                        conversation_history.append({"role": "assistant", "content": reply})
+                        if len(conversation_history) > 20:
+                            conversation_history = conversation_history[-20:]
+
                     last_shreya_msg_time = datetime.now(IST)
                     logger.info(f"Replied: {reply[:80]}")
-
-                    if random.random() < 0.15:
-                        await asyncio.sleep(random.uniform(4, 10))
-                        async with client.action(YOUR_USERNAME, "typing"):
-                            await asyncio.sleep(random.uniform(1, 3))
-                        await client.send_message(YOUR_USERNAME, random.choice(["😭","❤️","lol","anyway","🥺","wait","hm","chaitu 🥺","💕","okay fine","🙄"]))
 
                 except Exception as e:
                     logger.error(f"Handle error: {e}")
