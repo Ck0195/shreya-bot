@@ -936,24 +936,44 @@ async def run_bot():
                                 await event.reply("chaitu it's not loading 😭 try again")
                         return
 
-                    # Offline after 11pm / before 7am
-                    now_hour = datetime.now(IST).hour
-                    if now_hour >= 23 or now_hour < 7:
-                        return
-
+                    # Natural human-like response timing.
+                    # Short/simple messages get a quicker response; longer messages
+                    # get more thinking time. No hard 11 PM - 7 AM reply block.
                     if random.random() < 0.20 and len(user_text.split()) > 3:
                         await asyncio.sleep(random.uniform(10, 30))
                         await send_reaction(client, event)
 
-                    read_delay = random.uniform(20, 35) if wants_to_talk(user_text) else random.uniform(25, 55)
-                    logger.info(f"Waiting {read_delay:.0f}s")
+                    word_count = len(user_text.split())
+                    if word_count <= 3:
+                        read_delay = random.uniform(3, 8)
+                    elif word_count <= 12:
+                        read_delay = random.uniform(5, 15)
+                    else:
+                        read_delay = random.uniform(8, 20)
+
+                    logger.info(f"Waiting {read_delay:.0f}s before replying")
                     await asyncio.sleep(read_delay)
 
                     async with client.action(YOUR_USERNAME, "typing"):
-                        await asyncio.sleep(random.uniform(2, 5))
+                        typing_delay = random.uniform(2, 4)
+                        logger.info(f"Typing for {typing_delay:.0f}s")
+                        await asyncio.sleep(typing_delay)
 
+                    logger.info("Calling get_reply()...")
                     reply = await get_reply(user_text)
-                    if not reply: return
+
+                    # Never silently fail after typing. If Groq/API fails, send a
+                    # natural fallback instead of making it look like Shreya ignored it.
+                    if not reply:
+                        logger.error("get_reply() returned None - sending fallback")
+                        reply = random.choice([
+                            "wait 😭 my brain just stopped working",
+                            "chaitu 😭 say that again",
+                            "wait i'm listening 🥺",
+                            "sorry 😭 i glitched for a sec"
+                        ])
+
+                    logger.info(f"Sending reply: {reply}")
 
                     if reply == "SEND_PHOTO":
                         sent = await send_photo(client, YOUR_USERNAME, naughty=True)
