@@ -57,6 +57,7 @@ _remembered_girl_names = []
 _used_prompts          = []
 latest_event_id        = 0      # id of the newest incoming message (used to drop stale replies)
 pending_replies        = 0      # number of incoming messages currently being processed
+last_affection_proactive = None # when Shreya last sent a spontaneous kiss/cuddle message
 
 # ── Text matching helper (word boundaries, so "pic" doesn't match "topic") ───
 def has_any(text, phrases):
@@ -641,6 +642,26 @@ STUDIOUS_MSGS = [
     "after dance i still managed to study, who's the best 🤭",
     "chaitu what did you learn today, don't say nothing 😤",
 ]
+# Spontaneous kiss / cuddle / hug messages. Sent only through the existing random-message scheduler,
+# with a cooldown (see affection_proactive_ok) so they stay occasional and never repeat daily.
+AFFECTION_PROACTIVE_MSGS = [
+    "excuse me, when am i getting my cuddles? 😭❤️",
+    "i miss your hugs todayyy 🥹🫂",
+    "you're seriously overdue for giving me kisses 😤💋",
+    "come here, i need my cuddle time with youuu ❤️😭",
+    "not me randomly missing your kisses rn 😭💋",
+    "one hug, three kisses. that's the deal 😌❤️",
+    "i deserve extra cuddles today and i'm not negotiating 😤🫂",
+    "sending you a million kisses until i get the real ones 😚💋❤️",
+    "chaitu i want a hug rn, that's it, that's the text 🥹🫂",
+    "ngl i miss cuddling up to you 🥹💕",
+    "you owe me a long hug and i'm collecting soon 😌🫶",
+    "mwaahh 😚💋 that's one, you owe me the rest",
+    "random but i miss your cuddles and it's getting out of hand 😭💗",
+    "i'm in a cuddle mood and you're not here 😤🥹",
+    "i miss how warm your hugs are 🥹❤️",
+    "kisses on credit till i see you 😚💋 interest applies 😌",
+]
 GOODLUCK_MSGS     = ["chaitu you've got this, go kill that exam 💪","all the best chaitu 🥺 you studied hard you'll do great","go show them what BIT AIML is made of 😤💪","chaitu i'm rooting for you, do well okay 🥺"]
 NUDGE_PROMPTS     = ["Chaitu hasn't texted. Miss him. Text him casually.","Haven't heard from Chaitu. Check on him.","Chaitu is quiet. Small casual message to him."]
 MEAL_PROMPTS      = {"breakfast":["Ask Chaitu if he had breakfast. Be casual."],"lunch":["Ask Chaitu if he had lunch. Keep it short."],"dinner":["Ask Chaitu if he had dinner yet. Be casual."]}
@@ -742,15 +763,7 @@ ANGRY_FIRST_REPLY = [
     "CHAITANYA KUMAR explain yourself right now 😤",
 ]
 
-# ── Direct-request presets (only used for the two explicit intents) ───────────
-MISS_YOU_TEXTS = [
-    "i miss you too chaitu 🥺 wish you were here",
-    "awww chaitu 🥺 i miss you too, come see me soon okay ❤️",
-    "i miss you too baby, wish i could just sit with you rn 🥺❤️",
-    "stop making me miss you more 😭 come see me when you can 🤍",
-    "i knowww 🥺 i miss having you around too, you'll see me soon ❤️",
-    "come here already chaitu 😭 i miss you too much today 🥺",
-]
+# ── Direct-request presets ────────────────────────────────────────────────────
 SEE_ME_TEXTS = [
     "then come see me already 🥺❤️",
     "aww you wanna see me? 🥺 okay baby, just for you ❤️",
@@ -759,6 +772,142 @@ SEE_ME_TEXTS = [
     "come on then 😭❤️ here's a little me for you",
     "of course you wanna see me 😭❤️ wait, sending you one",
 ]
+
+# ── Fallbacks: ONLY used when Groq fails or produces nothing usable. ──────────
+# They answer the question directly (never "wait a sec"/"hold on").
+MISS_YOU_TEXTS = [
+    "i miss you too, idiottt 😭❤️ come here",
+    "awww baby 😭❤️ i wish i could give you the biggest hug rn",
+    "i miss you too baby, wish i could just sit with you rn 🥺❤️",
+    "stop making me miss you more 😭 come see me when you can 🤍",
+    "i knowww 🥺 i miss having you around too, you'll see me soon ❤️",
+    "come here already chaitu 😭 i miss you too much today 🥺",
+    "ughh now i miss you even more 🥹❤️",
+    "i miss you toooo 😭💋",
+]
+AFFECTION_FALLBACKS = {
+    "MISS_YOU": MISS_YOU_TEXTS,
+    "WISH_HERE": [
+        "sameee 🥹❤️ i'd steal all your cuddles",
+        "i wish you were here too 🥺 i'd never let you leave",
+        "ughh me too 😭❤️ come here soon okay",
+        "same baby 🥹 i'd be so annoying and cuddly rn",
+    ],
+    "NEED_YOU": [
+        "i'm here, babyyy 🥺❤️ tell me what's going on",
+        "hey, i'm right here 🫂 what happened?",
+        "i'm here okay 🥺 talk to me",
+        "come here 🫂❤️ tell me everything",
+    ],
+    "HUG": [
+        "come hereee 🫂❤️ you're getting the tightest hug ever",
+        "aww baby 🥹 *hugs you so tight* 🫂❤️",
+        "hugging you so tight rn 🤗❤️ better?",
+        "one big hug coming right up 🫂 i got you",
+    ],
+    "KISS": [
+        "mwaahhh 😚💋 one for youuu",
+        "MWAHHH 💋😚 there, one extra just because i missed you",
+        "come here 😚💋 kisses all over your face",
+        "mwah mwah mwah 😘💋 okay that's enough for today 😌",
+    ],
+    "CUDDLE": [
+        "ughhh now i miss our cuddles even more 🥹❤️",
+        "come here, cuddles loading 🫂💕",
+        "i want cuddles too 😭 you're not allowed to say that when you're far",
+        "cuddle me later then, i'm collecting 😤🫂❤️",
+    ],
+    "AFFECTION": [
+        "i love you too, dumbooo ❤️😭",
+        "love you too idiot 😭❤️",
+        "aww stoppp 🥹 love you toooo",
+        "i love you too baby 💕",
+    ],
+}
+GREETING_FALLBACKS = [
+    "hiii idiot 😂❤️",
+    "heyyy 😚 what's up",
+    "hii 🥹 you finally texted",
+    "hey you 😌 what's going on",
+]
+STATUS_FALLBACKS_HOME = [
+    "nothing much, just chilling. wbu? 😚",
+    "just lying down and scrolling my phone 😭😂",
+    "just relaxing at home rn, wbu? 😌",
+    "nothing productive honestly 😭 what's up with you?",
+    "just chilling, why? you sound curious 😂❤️",
+]
+STATUS_FALLBACKS_COLLEGE = [
+    "in college rn 😭 kinda bored, wbu?",
+    "just sitting in class pretending to listen 😂 wbu?",
+    "on a break at college, tell me what's up 😚",
+    "college stuff as usual 😭 what about you?",
+]
+DISAPPEAR_FALLBACKS = [
+    "i was caught up with somethinggg 😭 i'm here now",
+    "sorry sorry, got busy with stuff 😭 i'm here now",
+    "i was around, just got tied up 😭 what's up?",
+]
+WHAT_HAPPENED_FALLBACKS = [
+    "nothing much, why? you sound curious 😂❤️",
+    "nothing happened 😭 why, what's up?",
+    "nothing really, why are you asking like that 😂",
+]
+AVAILABILITY_FALLBACKS = [
+    "not reallyyy, tell me ❤️",
+    "ofcc, what's wrong baby? ❤️",
+    "i'm free, what's up? 😚",
+    "yeah tell me, what's going on? 🥺❤️",
+]
+AVAILABILITY_BUSY_FALLBACKS = [
+    "kinda busy rn 😭 but tell me quickly ❤️",
+    "a little busy, but you can tell me, what's up? 🥺",
+]
+QUESTION_FALLBACKS = [
+    "hmm good question 😭 what do you think?",
+    "umm i honestly don't know 😭 you tell me",
+]
+COMFORT_FALLBACKS = [
+    "hey, i'm here okay 🥺❤️ what happened?",
+    "come here 🫂 tell me what's going on",
+    "i'm right here, talk to me 🥺",
+]
+GOOD_NEWS_FALLBACKS = [
+    "omg that's amazing 😭❤️ i'm so proud of you",
+    "stoppp that's so good 🥹🫶 tell me everything",
+]
+GENERIC_FALLBACKS = [
+    "okayyy tell me more 👀",
+    "ohh and then? 😭",
+    "hmm interesting 🤭 go on",
+    "aww really? 🥺",
+]
+
+def fallback_for(intent, text):
+    """Intent-matched fallback, or None if this intent should stay silent instead of sending filler."""
+    t = text.lower()
+    if intent in AFFECTION_FALLBACKS:
+        return pick_fresh(AFFECTION_FALLBACKS[intent])
+    if intent == "GREETING":
+        return pick_fresh(GREETING_FALLBACKS)
+    if intent == "AVAILABILITY":
+        return pick_fresh(AVAILABILITY_BUSY_FALLBACKS if is_currently_busy else AVAILABILITY_FALLBACKS)
+    if intent == "STATUS":
+        if has_any(t, ["where did you disappear", "where did u disappear", "where did you go", "where did u go",
+                       "where were you", "where were u"]):
+            return pick_fresh(DISAPPEAR_FALLBACKS)
+        if has_any(t, ["what happened", "what's happening", "whats happening", "what is happening"]):
+            return pick_fresh(WHAT_HAPPENED_FALLBACKS)
+        if is_currently_busy and busy_reason:
+            return f"kinda busy with {busy_reason} rn 😭 text you in a bit ❤️"
+        return pick_fresh(STATUS_FALLBACKS_COLLEGE if is_busy_hours() else STATUS_FALLBACKS_HOME)
+    if intent == "QUESTION":
+        return pick_fresh(QUESTION_FALLBACKS)
+    if intent in ("LOW_MOOD", "BAD_NEWS", "ANGRY"):
+        return pick_fresh(COMFORT_FALLBACKS)
+    if intent == "GOOD_NEWS":
+        return pick_fresh(GOOD_NEWS_FALLBACKS)
+    return None
 
 SHREYA_SYSTEM = """You are Shreya, a 19-year-old college student texting her boyfriend Chaitu, 19. Known each other 16 years. From Puttur Mangalore, studying at MS Ramaiah College of Engineering, ISC department, Bangalore. Chaitu is at BIT college AIML branch. You do Bharatanatyam, western dance, and model for Navaratan Jewels. Father in politics. Mother loves Chaitu like her own son.
 
@@ -784,15 +933,23 @@ YOU ARE HAVING AN ONGOING, REAL CONVERSATION. The earlier messages in this chat 
 
 HOW TO TEXT:
 1. 1 or 2 sentences usually. Never more than 3 short lines.
-2. 0-2 emojis. Max 3 only if very dramatic.
-3. Plain English like a real 19 year old girl texting. Not an AI, not formal, not customer support. No regional words unless naturally fits.
+2. 0-3 emojis, usually 1-2. In warm or affectionate moments pick naturally from: ❤️ ❤️‍🔥 😚 😘 💋 🥹 🥺 🫂 🤗 😭 😂 💕 💗 🫶. Vary the combinations and don't put emojis after every sentence.
+3. Plain English like a real 19 year old girl texting. Not an AI, not formal, not customer support. Casual, mostly lowercase is fine, imperfect grammar is fine. Sometimes stretch a word the way people text (hiii, sameee, youuu, idiottt, hereee, ofcc) but not every word. No regional words unless naturally fits.
 4. After 8pm never mention class or practice.
 5. Use ngl, lowkey, no bc, pls, i cant naturally sometimes.
 6. Do not repeat wording you already used in this conversation.
-7. Affectionate words (chaitu, baby, love, idiot, cutie, my boy) only sometimes; vary them. Not every message is romantic.
+7. Pet names (baby, idiot, dumbo, cutie, my boy) only sometimes and varied; a bit more in warm moments, none in serious or annoyed ones.
 8. When Chaitu calls you mommy say something sweet and slightly naughty. Sometimes call Chaitu daddy at night when feeling bold. Always tasteful, never explicit.
 9. If he says something worrying like wanting to hurt himself, drop the teasing, take it seriously and warmly, and gently encourage him to talk to someone he trusts (family, a close friend, or a helpline) right now.
-10. If you were asked what you're doing or did today, answer from your own life (college, dance, studying, family) matching the TIME above.
+10. If you were asked what you're doing, where you are, or whether you're busy, answer directly from your own life (college, dance, studying, family, home) matching the TIME above and the STATUS note if there is one.
+11. NEVER stall with "wait a sec", "hold on", "give me a minute", "just a second", "one sec" or similar. Answer right away. Only say you're busy if the STATUS note says you really are.
+
+MATCH THE MOMENT:
+- If he's upset or low: comfort him first, no flirting.
+- If you two are teasing: tease back playfully.
+- If it's romantic or affectionate: be warm and expressive. Hugs 🫂, cuddles, kisses 😚💋 are natural. When he says he misses you, don't only say "miss you too": add personality (wish for a hug, call him an idiot lovingly, tell him to come see you).
+- If you're annoyed (he replied very late, an angry state, lazy replies): don't suddenly turn sweet. Stay a bit sassy and soften slowly.
+- Not every reply is romantic. Rarely, only when the mood fits, you may playfully say you miss his hugs, cuddles or kisses.
 
 PERSONALITY: Focused, confident, ambitious, sassy and sarcastic naturally. Playful, caring, occasionally flirty in a tasteful way. Real girlfriend energy: has her own life, studious, busy with college and dance. Not clingy, not controlling, not constantly jealous or emotional, not robotic, not overly poetic."""
 
@@ -819,6 +976,13 @@ def build_system(hints=None, extra_notes=None):
 BANNED_PHRASES = ["wait i'm listening", "wait im listening", "i glitched", "my brain just stopped",
                   "say that again", "glitch for a sec", "i'm listening"]
 
+# Stalling phrases that must never be sent as a reply (e.g. to "what are you doing?")
+WAITING_RE = re.compile(
+    r"\b(wait a (sec|second|seconds|minute|min|moment)|hold on|hold up|"
+    r"give me a (sec|second|minute|min|moment)|gimme a (sec|min|minute)|"
+    r"just a (sec|second|minute|min|moment)|one (sec|second|minute|min|moment)|"
+    r"wait,? i'?ll tell you|brb)\b", re.I)
+
 def clean_reply(text):
     if not text:
         return ""
@@ -833,6 +997,8 @@ def is_usable(reply):
     if len(letters) < 2:
         return False
     low = reply.lower()
+    if WAITING_RE.search(low):
+        return False
     return not any(p in low for p in BANNED_PHRASES)
 
 async def groq_chat(system, messages, max_tokens=120, temperature=0.85):
@@ -907,7 +1073,7 @@ async def generate_reply(user_text, hints, max_tokens=120):
         if avoid_list:
             notes += "\nDo NOT repeat or rephrase any of your recent messages: " + " | ".join(avoid_list)
         if attempt > 0:
-            notes += "\nYour previous attempt was unusable or too similar to something you already said. Write a clearly different, specific reply to his latest message."
+            notes += "\nYour previous attempt was unusable or too similar to something you already said (or it stalled with 'wait'/'hold on'). Write a clearly different, specific reply that answers him right away."
         system = build_system(hints, notes)
         temp = 0.85 + 0.1 * attempt
         text, err = await groq_chat(system, conversation_history[-24:], max_tokens=max_tokens, temperature=temp)
@@ -930,14 +1096,6 @@ async def generate_reply(user_text, hints, max_tokens=120):
     if candidate and _norm(candidate) not in [_norm(r) for r in recent_replies[-8:]]:
         return candidate, False
     return None, False
-
-def emergency_fallback(intent):
-    """Used ONLY when the Groq API genuinely fails. Matches the type of message."""
-    if intent == "QUESTION":
-        return random.choice(["wait, give me a sec 😭", "hold on, let me think about that 😭"])
-    if intent in ("LOW_MOOD", "BAD_NEWS", "ANGRY"):
-        return random.choice(["wait chaitu, i'm here 🥺", "chaitu i'm here, give me one sec 🥺"])
-    return random.choice(["wait, i'm thinking 😭", "hold on, one sec 😭"])
 
 async def generate_scheduled(prompt):
     """Text Shreya sends on her own (not a reply). Never touches the reply-context instructions."""
@@ -964,7 +1122,8 @@ SEE_ME_KW = [
     "send me a photo","send your pic","send your photo","send selfie","send a selfie","your pic","your photo",
     "your selfie","how do you look","how you look",
 ]
-MISS_YOU_KW = ["i miss you","miss you","missing you","i really miss you","i miss u","miss u","missing u"]
+MISS_YOU_KW = ["i miss you","miss you","missing you","i really miss you","i miss u","miss u","missing u",
+               "miss your","miss ur","missing your","missing ur"]
 MISS_NEGATIONS = ["don't miss","dont miss","do not miss","not missing","never miss","won't miss","wont miss","don't even miss"]
 GREETING_WORDS = {"yo","hi","hii","hiii","hey","heyy","heyyy","hello","hola","sup","wassup","wasup","whatsup",
                   "whats up","what's up","hey there","oi","hlo","helo","good morning","gm","morning"}
@@ -980,6 +1139,36 @@ AFFECTION_KW = ["love you","i love u","luv u","ily","you're cute","you are cute"
 QUESTION_STARTS = ("what","why","how","when","where","who","which","do you","did you","are you","were you",
                    "will you","can you","could you","have you","is it","wyd","hbu","wbu","are u","did u","do u")
 
+# Everyday status / availability questions (answered directly, never with "wait a sec")
+STATUS_KW = [
+    "where are you","where are u","where r u","where ru","where you at","what are you doing","what r you doing",
+    "what are u doing","what r u doing","what you doing","what u doing","whatcha doing","what are you up to",
+    "what r u up to","what are u up to","what you up to","what u up to","wyd","what are you upto",
+    "tell me what you are doing","tell me what you're doing","tell me what u are doing","tell me what u r doing",
+    "where did you disappear","where did u disappear","where did you go","where did u go","where were you",
+    "where were u","what happened","what's happening","whats happening","what is happening",
+]
+AVAILABILITY_KW = [
+    "are you busy","r u busy","are u busy","you busy","u busy","are you free","r u free","are u free",
+    "you free","u free","can we talk","can i talk","can we chat","wanna talk","want to talk","can you talk",
+    "can u talk","free to talk","are you there","you there","u there","are u there","you around",
+]
+# Affection requests
+HUG_KW = ["want a hug","need a hug","give me a hug","i want hug","wanna hug","hug me","wish i could hug you",
+          "miss your hug","miss your hugs","miss ur hug","miss ur hugs","need your hug","want your hug",
+          "send a hug","send me a hug","i need hug","want hug"]
+KISS_KW = ["want a kiss","need a kiss","give me a kiss","kiss me","wish i could kiss you","miss your kiss",
+           "miss your kisses","miss ur kiss","miss ur kisses","wanna kiss","want to kiss you","send a kiss",
+           "send me a kiss","want kisses","need kisses","muah","mwah","mwaah","miss your lips","miss kissing you",
+           "miss our kisses"]
+CUDDLE_KW = ["want to cuddle","wanna cuddle","need cuddles","need a cuddle","miss your cuddles","miss ur cuddles",
+             "miss our cuddles","miss cuddling","cuddle with you","cuddle with u","want cuddles","cuddle me",
+             "want a cuddle","miss cuddling with you"]
+WISH_HERE_KW = ["wish you were here","wish u were here","wish you were with me","wish u were with me",
+                "wish you were next to me","wish we were together","wish you were beside me",
+                "wish you were close","wish you were around"]
+NEED_YOU_KW = ["i need you","need you","i need u","need u"]
+
 def wants_to_see(text):
     return has_any(text, SEE_ME_KW)
 
@@ -991,12 +1180,19 @@ def detect_intent(text):
     if not any(c.isalpha() for c in t):
         return "UNKNOWN"
     if wants_to_see(t):                  return "WANT_TO_SEE_YOU"
+    if has_any(t, KISS_KW):              return "KISS"
+    if has_any(t, HUG_KW):               return "HUG"
+    if has_any(t, CUDDLE_KW):            return "CUDDLE"
+    if has_any(t, WISH_HERE_KW):         return "WISH_HERE"
     if is_miss_you(t):                   return "MISS_YOU"
+    if has_any(t, NEED_YOU_KW) and len(t.split()) <= 6: return "NEED_YOU"
     if has_any(t, GOODBYE_KW):           return "GOODBYE"
     stripped = re.sub(r"[^a-z' ]", "", t).strip()
     if stripped in GREETING_WORDS or (len(stripped.split()) <= 3 and stripped.split() and stripped.split()[0] in GREETING_WORDS):
         return "GREETING"
     if seems_sad(t):                     return "LOW_MOOD"
+    if has_any(t, AVAILABILITY_KW):      return "AVAILABILITY"
+    if has_any(t, STATUS_KW):            return "STATUS"
     if mentions_girl(t):                 return "JEALOUSY"
     if t.endswith("?") or t.startswith(QUESTION_STARTS):
         return "QUESTION"
@@ -1007,19 +1203,49 @@ def detect_intent(text):
     if len(t.split()) <= 2:              return "SHORT_REPLY"
     return "NORMAL_CONVERSATION"
 
+# Intents that are warm/romantic (subject to mood gating) and intents answered quickly
+AFFECTION_INTENTS = {"MISS_YOU", "WISH_HERE", "HUG", "KISS", "CUDDLE", "AFFECTION"}
+FAST_INTENTS = {"STATUS", "AVAILABILITY", "MISS_YOU", "WISH_HERE", "NEED_YOU", "HUG", "KISS", "CUDDLE",
+                "AFFECTION", "LOW_MOOD", "GREETING"}
+# Intents Shreya still answers (briefly) while she is in a busy state
+BUSY_REPLY_INTENTS = {"STATUS", "AVAILABILITY", "MISS_YOU", "WISH_HERE", "NEED_YOU", "HUG", "KISS",
+                      "CUDDLE", "AFFECTION", "LOW_MOOD"}
+
 INTENT_HINTS = {
-    "GREETING":   "He is greeting you or asking what's up. Greet him back naturally; if he asked what's up, tell him what you're doing right now based on the TIME above.",
-    "QUESTION":   "He asked a question. Answer that exact question directly first, in character, then at most a tiny extra touch.",
-    "AFFECTION":  "He is being affectionate. Respond warmly in your own sassy way; don't just parrot 'i love you'.",
+    "GREETING":   "He is greeting you or asking what's up. Greet him back naturally with a little personality (e.g. teasing him lovingly); if he asked what's up, tell him what you're doing right now based on the TIME above.",
+    "QUESTION":   "He asked a question. Answer that exact question directly first, in character, then at most a tiny extra touch. Never stall with 'wait' or 'hold on'.",
+    "AFFECTION":  "He said he loves you or complimented you. Say it back in your own style, sometimes teasing ('dumbooo', 'idiot'), sometimes soft; vary it every time. Style example only: 'i love you too, dumbooo ❤️😭'.",
     "GOOD_NEWS":  "He shared good news. React with real excitement about the specific thing he said.",
     "BAD_NEWS":   "He shared something bad. React with care about the specific thing he said; ask what happened if it's unclear.",
     "ANGRY":      "He sounds irritated or angry. Don't escalate; respond to what he's actually upset about.",
     "JEALOUSY":   "He talked about another girl. Show MILD playful jealousy (teasing, sarcastic, a little dramatic) about the specific thing he said. Never controlling or abusive.",
     "SHORT_REPLY":"His message is short. Look at YOUR last message and treat his reply as the answer/reaction to it; acknowledge it specifically (e.g. if you asked what he's doing and he says 'some work', respond about the work). Never say you didn't understand.",
     "GOODBYE":    "He is leaving or going to sleep. Say goodnight/bye naturally, matching the time of day.",
-    "NORMAL_CONVERSATION": "Respond naturally to what he said, referring to the specific things in his message.",
+    "NORMAL_CONVERSATION": "Respond naturally to what he said, referring to the specific things in his message. Match his tone: if he's teasing, tease back; if he's annoyed or complaining, stay playful and a bit sassy instead of turning sweet.",
     "UNKNOWN":    "His message may be an emoji, sticker or unclear. React to it naturally; ask a short specific question if you really need to.",
+    "STATUS":     "He is asking what you're doing, where you are, where you disappeared to, or what happened. Answer it DIRECTLY in your first sentence like a girl texting her boyfriend. Style examples only, never copy them: 'just chilling at home rn, wbu? 😚', 'lying down and scrolling my phone 😭😂', 'i was caught up with somethinggg 😭 i'm here now', 'nothing much, why? you sound curious 😂❤️'. Never say wait / hold on / give me a sec. Don't invent specific named places, people or events beyond your normal life.",
+    "AVAILABILITY": "He is asking if you're busy/free or whether the two of you can talk. Answer directly. If you're not busy, say yes warmly and ask what's up or what's wrong. Style examples only: 'not reallyyy, tell me ❤️', 'ofcc, what's wrong baby? ❤️'. If the STATUS note says you really are busy, say that briefly and naturally. Never say wait / hold on / give me a sec.",
+    "MISS_YOU":   "He said he misses you (or something of yours). Respond with warmth and personality, not just 'i miss you too'. Vary it: a loving insult, wishing for a hug or cuddle, telling him to come see you, or admitting you miss him too. 1-2 sentences, 1-3 natural emojis. Style examples only: 'i miss you too, idiottt 😭❤️ come here', 'awww baby 😭❤️ i wish i could give you the biggest hug rn'.",
+    "WISH_HERE":  "He wishes you were with him. Match that feeling playfully and warmly. Style example only: 'sameee 🥹❤️ i'd steal all your cuddles'.",
+    "NEED_YOU":   "He needs you. Be comforting first, no flirting: tell him you're here and ask what's going on. Style example only: 'i'm here, babyyy 🥺❤️ tell me what's going on'.",
+    "HUG":        "He wants a hug. Give him a big warm hug in words, in your own way. Style example only: 'come hereee 🫂❤️ you're getting the tightest hug ever'.",
+    "KISS":       "He wants or mentions a kiss. Answer with a playful kiss text, tasteful, with 😚💋 style emojis. Style examples only: 'mwaahhh 😚💋 one for youuu', 'MWAHHH 💋😚 one extra just because i missed you'.",
+    "CUDDLE":     "He wants or misses cuddles. Be warm and a little dramatic about missing them too. Style example only: 'ughhh now i miss our cuddles even more 🥹❤️'.",
 }
+
+# ── Status note: what Shreya can truthfully say about her current situation ───
+def get_status_note():
+    if is_currently_busy and busy_reason:
+        return (f"STATUS: you are genuinely busy right now ({busy_reason}) for a little while. "
+                "Mention it briefly and naturally, keep your reply short, and don't promise exact times.")
+    return ("STATUS: you are NOT busy right now. Your situation fits: " + get_time_context() + ". "
+            "Only mention a place or activity that fits this and your normal life (home, college, dance, studying, "
+            "family, eating, resting, scrolling your phone). Do not invent specific named places, trips or events.")
+
+def asked_recently(intent):
+    """True if Chaitu already sent a message with the same intent a few messages ago."""
+    users = [m["content"] for m in conversation_history if m["role"] == "user"][:-1][-6:]
+    return any(detect_intent(u) == intent for u in users)
 
 # ── Busy mode ─────────────────────────────────────────────────────────────────
 last_busy_ended = None
@@ -1057,14 +1283,17 @@ APOLOGETIC = ["sorry","i'm sorry","forgive me","don't be mad","i didn't mean",
               "please na","baby please","mommy please","won't happen again",
               "i promise","hear me out","please yaar","jaan please","calm down"]
 
+def r_chance(p):
+    return random.random() < p
+
 # ── Core reply logic ──────────────────────────────────────────────────────────
 async def get_reply(user_text):
     """
-    Returns (kind, text):
-      ("text", reply)     normal contextual reply
-      ("see_me", reply)   sweet text, then ONE photo
-      ("silent", "")      busy: stay silent
-      ("none", "")        nothing usable could be generated
+    Returns (kind, text, intent):
+      ("text", reply, intent)     normal contextual reply
+      ("see_me", reply, intent)   sweet text, then ONE photo
+      ("silent", "", intent)      busy: stay silent
+      ("none", "", intent)        nothing usable could be generated
     The user message is already in conversation_history when this runs.
     """
     global is_jealous, short_reply_count, fight_count, busy_spam_count, angry_mode, angry_stage
@@ -1077,11 +1306,9 @@ async def get_reply(user_text):
     else:
         short_reply_count = 0
 
-    # Explicit intents
+    # Explicit photo request
     if intent == "WANT_TO_SEE_YOU":
-        return "see_me", pick_fresh(SEE_ME_TEXTS)
-    if intent == "MISS_YOU":
-        return "text", pick_fresh(MISS_YOU_TEXTS)
+        return "see_me", pick_fresh(SEE_ME_TEXTS), intent
 
     # Memory / goals / incidents (all feed context, none override the reply)
     extra_context_hints = []
@@ -1103,16 +1330,19 @@ async def get_reply(user_text):
     if is_currently_busy:
         if has_any(user_text, URGENT_KW):
             end_busy()
-            return "text", random.choice(BREAK_BUSY_MSGS)
+            return "text", random.choice(BREAK_BUSY_MSGS), intent
         if busy_free_at and datetime.now(IST) < busy_free_at:
-            busy_spam_count += 1
-            if busy_spam_count < 3:
-                return "silent", ""
-            busy_spam_count = 0
-            return "text", pick_fresh(["chaitu i said i'm busy 😭 but okay i miss you too 🥺",
-                                       "omg chaitu stop 😤 you're so needy and i love it 😘",
-                                       "okay okay i see you 🙄 i'll be back soon i promise 💕"])
-        end_busy()
+            if intent not in BUSY_REPLY_INTENTS:
+                busy_spam_count += 1
+                if busy_spam_count < 3:
+                    return "silent", "", intent
+                busy_spam_count = 0
+                return "text", pick_fresh(["chaitu i said i'm busy 😭 but okay i miss you too 🥺",
+                                           "omg chaitu stop 😤 you're so needy and i love it 😘",
+                                           "okay okay i see you 🙄 i'll be back soon i promise 💕"]), intent
+            # Status / availability / affection / comfort: answer naturally below using the busy context
+        else:
+            end_busy()
 
     # Going busy: never in the middle of him answering her question, or during emotional/question messages
     if (can_go_busy() and intent in ("NORMAL_CONVERSATION", "SHORT_REPLY")
@@ -1122,10 +1352,14 @@ async def get_reply(user_text):
         if random.random() < chance:
             scenario, mins, reason = random.choice(BUSY_DAY if is_busy_hours() else BUSY_ANY)
             start_busy(mins, reason)
-            return "text", scenario
+            return "text", scenario, intent
 
     hints = []
     max_tokens = 120
+
+    # Late reply -> mild coldness folded INTO the reply (never replaces it)
+    late = is_late_reply() and random.random() < 0.6
+    is_jealous = late
 
     # Base hint from intent
     if intent == "LOW_MOOD":
@@ -1135,16 +1369,29 @@ async def get_reply(user_text):
             hints.append("He's feeling low. Comfort him warmly with a short ORIGINAL 3-4 line English poem (not a famous poem or lyrics), casual tone, ending with one heart emoji. Only the poem, nothing else.")
             max_tokens = 170
         else:
-            hints.append("He's feeling low. Be warm and supportive in 1-2 sentences, ask gently what happened, no poem this time.")
+            hints.append("He's feeling low. Comfort him first, warmly, in 1-2 sentences (a hug emoji like 🫂 is fine), ask gently what happened. No flirting, no poem this time.")
     else:
         hints.append(INTENT_HINTS.get(intent, INTENT_HINTS["NORMAL_CONVERSATION"]))
+
+    # Status / availability: ground her answer in a real, consistent state
+    if intent in ("STATUS", "AVAILABILITY") or is_currently_busy:
+        hints.append(get_status_note())
+    if intent in ("STATUS", "AVAILABILITY"):
+        hints.append("Stay consistent with anything you already said earlier in this chat about what you're doing, where you are, or whether you're busy.")
+        if asked_recently(intent):
+            hints.append("He already asked you something like this a little while ago in this chat. Don't answer identically: tease him a little ('you literally just asked 😭') and stay consistent with what you said before.")
+
+    # Mood gating for affection: don't turn sweet when she's genuinely annoyed
+    if intent in AFFECTION_INTENTS:
+        if angry_mode and angry_stage == 0:
+            hints.append("You're still annoyed with him. Don't turn fully sweet at once: pout or tease first ('oh now you miss me 🙄'), then soften only a little.")
+        elif short_reply_count >= 2:
+            hints.append("He's been giving lazy replies, so keep a little sass, but still respond warmly to this message.")
 
     # Topic-specific guidance (all go to Groq, never a canned reply)
     t = user_text.lower()
     if has_any(t, ["still mad","mad at me","mad on me","angry with me","angry at me","still angry","still upset"]):
         hints.append("He is asking whether you're still mad at him. Answer THAT directly in character (e.g. a little but softening, or not anymore).")
-    if has_any(t, ["what are you doing","what r u doing","wyd","what are u doing"]):
-        hints.append("Tell him what you're doing right now based on the TIME above.")
     if has_any(t, ["what did you do today","what did u do today","how was your day","how was ur day"]):
         hints.append("Tell him about your day naturally based on the TIME above (college/dance/studies/family), with one specific detail.")
 
@@ -1188,9 +1435,7 @@ async def get_reply(user_text):
     elif apologizing:
         hints.append("He's apologizing. Respond to the apology genuinely; you can soften or tease, depending on the conversation.")
 
-    # Late reply -> mild coldness folded INTO the reply (never replaces it)
-    late = is_late_reply() and random.random() < 0.6
-    is_jealous = late
+    # Late reply hint
     if late:
         fight_count += 1
         hints.append("He took very long to reply to your last message. Open with a short sarcastic/cold line about that, then still answer what he said properly.")
@@ -1204,14 +1449,17 @@ async def get_reply(user_text):
 
     reply, api_failed = await generate_reply(user_text, hints, max_tokens=max_tokens)
     if reply:
-        return "text", reply
-    if api_failed:
-        return "text", emergency_fallback(intent)
-    logger.error("No usable reply generated (not an API failure) — staying silent rather than sending filler")
-    return "none", ""
+        return "text", reply, intent
 
-def r_chance(p):
-    return random.random() < p
+    # Groq failed or produced nothing usable: use an intent-matched fallback that answers directly
+    fb = fallback_for(intent, user_text)
+    if fb:
+        logger.warning(f"Using fallback for intent {intent} (api_failed={api_failed})")
+        return "text", fb, intent
+    if api_failed:
+        return "text", pick_fresh(GENERIC_FALLBACKS), intent
+    logger.error("No usable reply generated (not an API failure) — staying silent rather than sending filler")
+    return "none", "", intent
 
 # ── Scheduled (standalone) messages ───────────────────────────────────────────
 def conversation_active():
@@ -1221,6 +1469,17 @@ def conversation_active():
     if last_reply_time is not None and (datetime.now(IST) - last_reply_time).total_seconds() < 300:
         return True
     return False
+
+def affection_proactive_ok():
+    """Cooldown for spontaneous kiss/cuddle messages: occasional, never back-to-back, never after a recent message."""
+    if care_mode or angry_mode:
+        return False
+    now = datetime.now(IST)
+    if last_affection_proactive is not None and (now - last_affection_proactive).total_seconds() < 5 * 3600:
+        return False
+    if last_shreya_msg_time is not None and (now - last_shreya_msg_time).total_seconds() < 1800:
+        return False
+    return True
 
 def get_random_prompts():
     if care_mode:  return CARE_CHECKUP_MSGS
@@ -1236,6 +1495,7 @@ def get_random_prompts():
     if random.random() < 0.08: return TEASE_BIT_MSGS
     if random.random() < 0.12: return PERSONAL_GOALS
     if random.random() < 0.10: return STUDIOUS_MSGS
+    if random.random() < 0.12 and affection_proactive_ok(): return AFFECTION_PROACTIVE_MSGS
     if random.random() < 0.20: return CHEESY_PROMPTS
     if random.random() < 0.10: return HUNGER_MSGS
     if random.random() < 0.08: return BRAG_MSGS
@@ -1255,11 +1515,11 @@ def get_random_prompts():
 
 FINISHED_MESSAGE_LISTS = (OVERLOADED_LOVE_MSGS + HOLIDAY_MEMORY_MSGS + FIGHT_STARTERS + PETTY_MSGS + DELETED_TEASE_MSGS
                           + SONGS_REELS + BRAG_ABOUT_YOU + PROUD_MSGS + ROAST_MSGS + TEASE_BIT_MSGS + PERSONAL_GOALS
-                          + STUDIOUS_MSGS + HUNGER_MSGS + BRAG_MSGS + WOULD_YOU_RATHER + MEETUP_PLANNING + DEEP_Q_MSGS
-                          + FUTURE_DATE_MSGS + CARE_CHECKUP_MSGS)
+                          + STUDIOUS_MSGS + AFFECTION_PROACTIVE_MSGS + HUNGER_MSGS + BRAG_MSGS + WOULD_YOU_RATHER
+                          + MEETUP_PLANNING + DEEP_Q_MSGS + FUTURE_DATE_MSGS + CARE_CHECKUP_MSGS)
 
 async def get_random_message(nudge=False, meal=None):
-    global _used_prompts
+    global _used_prompts, last_affection_proactive
     if meal and meal in MEAL_PROMPTS:
         prompt = random.choice(MEAL_PROMPTS[meal])
     elif nudge:
@@ -1276,10 +1536,15 @@ async def get_random_message(nudge=False, meal=None):
         if not available:
             _used_prompts = []
             available = prompts
+        if prompts is AFFECTION_PROACTIVE_MSGS:
+            # never repeat a kiss/cuddle line that is similar to something sent recently
+            available = [p for p in available if not is_too_similar(p)] or available
         prompt = random.choice(available)
         _used_prompts.append(prompt)
         if len(_used_prompts) > 10:
             _used_prompts.pop(0)
+        if prompt in AFFECTION_PROACTIVE_MSGS:
+            last_affection_proactive = datetime.now(IST)
     # Prompts that are already finished messages (not instructions) get sent as-is
     if prompt in FINISHED_MESSAGE_LISTS:
         return prompt
@@ -1335,7 +1600,7 @@ async def process_message(client, event, user_text):
         return
 
     # Detect intent + generate the contextual reply BEFORE the long human delay
-    kind, reply = await get_reply(user_text)
+    kind, reply, intent = await get_reply(user_text)
 
     if kind == "silent":
         logger.info("Busy - staying silent")
@@ -1343,9 +1608,17 @@ async def process_message(client, event, user_text):
     if kind == "none" or not reply:
         return
 
-    # Quick reply if she's announcing busy, or he asked her to talk
-    quick = is_currently_busy or reply in BREAK_BUSY_MSGS or has_any(user_text, URGENT_KW)
-    delay = random.uniform(5, 20) if quick else human_reply_delay(user_text)
+    # Timing: quick when she announces busy / he asked her to talk; fast for everyday status,
+    # affection and comfort messages (no artificial slowness); the usual human-like delay otherwise.
+    if is_currently_busy or reply in BREAK_BUSY_MSGS or has_any(user_text, URGENT_KW):
+        quick = True
+        delay = random.uniform(5, 20)
+    elif intent in FAST_INTENTS:
+        quick = True
+        delay = random.uniform(8, 35)
+    else:
+        quick = False
+        delay = human_reply_delay(user_text)
     delay = max(2.0, delay - (time.time() - started))
 
     if not quick and random.random() < 0.20:
@@ -1353,7 +1626,7 @@ async def process_message(client, event, user_text):
         await send_reaction(client, event)
         delay = max(2.0, delay - 20)
 
-    logger.info(f"Waiting {delay:.0f}s before replying")
+    logger.info(f"Waiting {delay:.0f}s before replying (intent={intent})")
     await asyncio.sleep(delay)
 
     # A newer message arrived while waiting: that handler answers with the full history
